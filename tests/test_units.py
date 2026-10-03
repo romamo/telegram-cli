@@ -94,10 +94,20 @@ class TestScanCap:
 class TestRenderPlain:
     def test_lists_become_aligned_tables(self) -> None:
         text = render_plain([{"id": 1, "name": "Ann"}, {"id": 22, "name": None}])
-        assert text.splitlines() == ["id  name", "--  ----", "1   Ann", "22"]
+        assert text == "id  name\n--  ----\n1   Ann\n22\n"
 
     def test_objects_become_key_value_lines(self) -> None:
-        assert render_plain({"premium": True, "dc": 2}) == "premium: yes\ndc: 2"
+        assert render_plain({"premium": True, "dc": 2}) == "premium: yes\ndc: 2\n"
 
     def test_empty_lists_say_so(self) -> None:
-        assert render_plain([]) == "(no results)"
+        assert render_plain([]) == "(no results)\n"
+
+    def test_missing_values_leave_no_trailing_space(self) -> None:
+        assert render_plain({"next_step": None}) == "next_step:\n"
+
+    def test_streamed_messages_render_one_line_each(self) -> None:
+        from telegram_cli.commands.export import render_message
+
+        rows = [{"id": i, "date": "2024-01-01T00:00:00+00:00", "sender": "A", "text": "hi"}
+                for i in (1, 2)]
+        assert "".join(render_message(r) for r in rows).count("\n") == 2

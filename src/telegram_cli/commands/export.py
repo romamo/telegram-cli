@@ -157,7 +157,7 @@ def export_messages(args: ExportArgs, ctx: Ctx) -> Iterator[ExportedMessage]:
 
 
 def render_message(data: Any) -> str:
-    """One line per exported message for `--format plain`"""
+    """One newline-terminated line per exported message for `--format plain`"""
     if data is None:
         return ""
     stamp = (data.get("date") or "")[:19].replace("T", " ")
@@ -165,4 +165,4 @@ def render_message(data: Any) -> str:
     if len(text) > 80:
         text = text[:79] + "…"
     sender = (data.get("sender") or "")[:20]
-    return f"{data['id']:<10} {stamp:<19}  {sender:<20}  {text}"
+    return f"{data['id']:<10} {stamp:<19}  {sender:<20}  {text}".rstrip() + "\n"

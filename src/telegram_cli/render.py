@@ -25,16 +25,16 @@ def _table(rows: list[dict[str, Any]]) -> str:
     lines = ["  ".join(col.ljust(w) for col, w in zip(columns, widths, strict=True))]
     lines.append("  ".join("-" * w for w in widths))
     lines += ["  ".join(c.ljust(w) for c, w in zip(r, widths, strict=True)) for r in cells]
-    return "\n".join(line.rstrip() for line in lines)
+    return "".join(line.rstrip() + "\n" for line in lines)
 
 
 def render_plain(data: Any) -> str:
-    """The app's `--format plain` renderer"""
+    """The app's `--format plain` renderer; like treaty's, every line ends with a newline"""
     if isinstance(data, list):
         if not data:
-            return "(no results)"
+            return "(no results)\n"
         if all(isinstance(row, dict) for row in data):
             return _table(data)
     if isinstance(data, dict):
-        return "\n".join(f"{key}: {_cell(value)}" for key, value in data.items())
-    return json.dumps(data, ensure_ascii=False, indent=2)
+        return "".join(f"{key}: {_cell(value)}".rstrip() + "\n" for key, value in data.items())
+    return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
