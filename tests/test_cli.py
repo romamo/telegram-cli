@@ -64,6 +64,7 @@ def test_deletes_offer_just_me_and_report_revoked(command: tuple[str, str]) -> N
         (("chats", "list", "--type", "bogus"), "type"),
         (("messages", "export", "--since", "2025-13-01"), "since"),
         (("messages", "cleanup", "spam", "--max-matches", "0"), "max-matches"),
+        (("messages", "cleanup", "spam", "--scan-limit", "-1"), "scan-limit"),
         (("auth", "--phone", "not-a-phone"), "phone"),
         (("auth", "--phone", "+380501234567", "--code", "12345"), "code"),
     ],
@@ -131,3 +132,10 @@ def test_version_comes_from_the_package() -> None:
     pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
     _, envelope = tg("version")
     assert envelope["data"]["version"] == pyproject["project"]["version"]
+
+
+def test_cleanup_schema_offers_include_others_and_reports_skips() -> None:
+    code, envelope = tg("messages", "cleanup", "--schema")
+    assert code == 0
+    assert envelope["data"]["flags"]["include-others"]["default"] is False
+    assert "skipped_others" in json.dumps(envelope["data"])

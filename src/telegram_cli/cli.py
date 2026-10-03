@@ -164,7 +164,8 @@ messages_group.command(
 
 messages_group.command(
     "cleanup",
-    description="Find messages containing a phrase across all chats and delete them",
+    description="Find your own messages containing a phrase across all chats and delete them; "
+    "--include-others also deletes other people's matches",
     danger_level="destructive",
     exit_codes=(*CLIENT_EXIT_CODES, "PARTIAL_FAILURE"),
     has_network_io=True,
@@ -173,6 +174,8 @@ messages_group.command(
         ("Preview a cleanup", 'tg messages cleanup "old phone number" --dry-run'),
         ("Delete up to 5000 matches", 'tg messages cleanup "spam" --max-matches 5000 '
          "--confirm-destructive"),
+        ("Delete everyone's matches where allowed", 'tg messages cleanup "spam" '
+         "--include-others --confirm-destructive"),
     ],
 )(delete.cleanup)
 

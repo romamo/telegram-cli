@@ -87,6 +87,8 @@ class FakeClient:
     history_batch: int = 2
     """Messages one DeleteHistoryRequest removes before asking to be called again"""
     calls: list[str] = field(default_factory=list)
+    scanned: int = 0
+    """Global search hits handed out so far"""
 
     def add_chat(self, entity: Any, *texts: str, out: bool = False) -> int:
         chat_id = utils.get_peer_id(entity)
@@ -115,7 +117,18 @@ class FakeClient:
         by_id = {m.id: m for m in self.messages[utils.get_peer_id(entity)]}
         return [by_id.get(i) for i in ids or []]
 
-    async def iter_messages(self, entity: Any, from_user: str | None = None) -> AsyncIterator[Any]:
+    async def iter_messages(
+        self, entity: Any, from_user: str | None = None, search: str | None = None
+    ) -> AsyncIterator[Any]:
+        if entity is None:
+            # Global search, as messages.searchGlobal: every chat, no sender filter
+            assert search, "global search needs a phrase"
+            self.calls.append(f"search_global:{search}")
+            for m in [m for msgs in self.messages.values() for m in msgs]:
+                if search in m.message:
+                    self.scanned += 1
+                    yield m
+            return
         for m in list(self.messages[utils.get_peer_id(entity)]):
             if from_user is None or (from_user == "me" and m.out):
                 yield m
