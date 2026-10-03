@@ -115,3 +115,11 @@ def test_chat_and_message_flags_mean_the_same_everywhere() -> None:
         names = set(flags.get("flags", {}))
         assert "id" not in names and "ids" not in names, path
     assert {"chat", "message"} <= set(commands["messages.delete"]["flags"])
+
+
+def test_version_comes_from_the_package() -> None:
+    import tomllib
+
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    _, envelope = tg("version")
+    assert envelope["data"]["version"] == pyproject["project"]["version"]

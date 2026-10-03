@@ -10,7 +10,7 @@ from fakes import FakeClient, group, user
 from test_cli import tg
 from treaty import CliExit
 
-from telegram_cli.commands.chats import ChatType
+from telegram_cli.chat_type import ChatType
 from telegram_cli.commands.delete import MessagesDeleteArgs, _targets
 from telegram_cli.commands.folders import FolderPeersArgs, _chat_ids
 from telegram_cli.commands.search import search_messages_with

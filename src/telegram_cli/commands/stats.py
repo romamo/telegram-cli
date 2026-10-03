@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 from treaty import Ctx, NoArgs
 
+from telegram_cli.chat_type import ChatType, dialog_type
 from telegram_cli.client import get_client
-from telegram_cli.commands.chats import ChatType, dialog_type
 from telegram_cli.logs import logging_to
 
 

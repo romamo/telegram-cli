@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
+from importlib.metadata import version
 
 from treaty import App, Format
 
@@ -13,7 +14,7 @@ from telegram_cli.render import render_plain
 
 app = App(
     "tg",
-    version="0.1.0",
+    version=version("telegram-cli"),
     description="A Telegram CLI tool for power users and agents",
     default_timeout=120,
 )

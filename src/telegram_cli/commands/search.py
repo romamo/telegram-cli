@@ -9,12 +9,11 @@ from typing import Any, Literal
 from telethon import TelegramClient, functions, utils
 from treaty import Arg, Ctx, Flag, Page
 
+from telegram_cli.chat_type import ChatType, dialog_type
 from telegram_cli.client import get_client, resolve_entity
 from telegram_cli.commands.chats import (
     SCAN_LIMIT_DESCRIPTION,
-    ChatType,
     check_scan_limit,
-    dialog_type,
     warn_scan_capped,
 )
 from telegram_cli.ids import ChatId, MessageId

@@ -7,15 +7,16 @@ from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import StrEnum
 from pathlib import Path
 from typing import IO, Any, Literal
 
 from telethon import TelegramClient
-from telethon.tl.types import Channel, Chat, User
 from treaty import Ctx, Exit, Flag, Page, ParseError
 
+from telegram_cli.chat_type import ChatType, dialog_type
 from telegram_cli.client import get_client
+from telegram_cli.commands.delete import delete_chat_history, remove_chat
+from telegram_cli.commands.export import export_stream
 from telegram_cli.ids import ChatId
 from telegram_cli.logs import logging_to
 from telegram_cli.utils import INPUT_FILE_DESCRIPTION, chat_id_field, fetch_count, load_items
@@ -24,23 +25,6 @@ logger = logging.getLogger(__name__)
 
 # Dialogs scanned at most when filtering client-side
 _SCAN_LIMIT = 3000
-
-
-class ChatType(StrEnum):
-    USER = "user"
-    GROUP = "group"
-    CHANNEL = "channel"
-    UNKNOWN = "unknown"
-
-
-def dialog_type(entity: object) -> ChatType:
-    if isinstance(entity, User):
-        return ChatType.USER
-    if isinstance(entity, Channel):
-        return ChatType.CHANNEL if entity.broadcast else ChatType.GROUP
-    if isinstance(entity, Chat):
-        return ChatType.GROUP
-    return ChatType.UNKNOWN
 
 
 def _age(dt: datetime | None) -> str:
@@ -294,8 +278,6 @@ async def _review_chat(
     chat_id: ChatId, match_text: str | None, tty_in: IO[str], tty_out: IO[str]
 ) -> ReviewAction:
     """Show the search match and the last 10 messages, then ask what to do."""
-    from telegram_cli.commands.export import export_stream
-
     history = [msg async for msg in export_stream(chat_id, limit=10, since=None)]
 
     rule = "=" * 60
@@ -322,8 +304,6 @@ async def _review_chat(
 def review_chats(args: ReviewArgs, ctx: Ctx) -> ReviewResult:
     """Interactively review chats and delete their history or remove them."""
     with logging_to(ctx):
-        from telegram_cli.commands.delete import delete_chat_history, remove_chat
-
         # Treaty's verdict: stdin and stdout are terminals and --non-interactive is absent.
         # Off a terminal, in `tg exec`, or over MCP no one can answer, so nothing may start.
         if not ctx.prompter.interactive:
