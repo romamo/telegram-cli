@@ -64,6 +64,7 @@ def test_deletes_offer_just_me_and_report_revoked(command: tuple[str, str]) -> N
         (("chats", "list", "--type", "bogus"), "type"),
         (("messages", "export", "--since", "2025-13-01"), "since"),
         (("messages", "cleanup", "spam", "--max-matches", "0"), "max-matches"),
+        (("messages", "cleanup", "spam", "--scan-limit", "-1"), "scan-limit"),
         (("auth", "--phone", "not-a-phone"), "phone"),
         (("auth", "--phone", "+380501234567", "--code", "12345"), "code"),
     ],

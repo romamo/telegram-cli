@@ -198,6 +198,30 @@ class TestCleanup:
         result = run(cleanup_with(client, "spam", 2, dry_run=True))
         assert not result.limit_reached
 
+    def test_scan_limit_stops_reading_when_most_hits_are_others(self) -> None:
+        client = FakeClient()
+        client.add_chat(user(5), *[f"spam {i}" for i in range(5)])
+        client.add_chat(user(6, "Bob"), "spam mine", out=True)
+        result = run(cleanup_with(client, "spam", 100, dry_run=True, scan_limit=3))
+        assert (result.matched, result.skipped_others, client.scanned) == (0, 3, 4)
+        assert result.scan_capped and not result.limit_reached
+        assert result.would_affect is not None
+        assert result.would_affect.summary.endswith("stopped after reading 3 search hits")
+
+    def test_scan_limit_zero_reads_every_hit(self) -> None:
+        client = FakeClient()
+        client.add_chat(user(5), *[f"spam {i}" for i in range(5)])
+        mine = client.add_chat(user(6, "Bob"), "spam mine", out=True)
+        result = run(cleanup_with(client, "spam", 100, dry_run=False, scan_limit=0))
+        assert (result.matched, result.skipped_others, result.scan_capped) == (1, 5, False)
+        assert client.messages[mine] == []
+
+    def test_scan_limit_exactly_at_the_last_hit_is_not_capped(self) -> None:
+        client = FakeClient()
+        client.add_chat(user(5), "spam a", "spam b")
+        result = run(cleanup_with(client, "spam", 100, dry_run=True, scan_limit=2))
+        assert not result.scan_capped
+
     def test_nothing_left_is_a_noop(self) -> None:
         client = FakeClient()
         client.add_chat(user(5), "keep", out=True)

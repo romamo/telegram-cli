@@ -415,11 +415,21 @@ class CleanupArgs:
         description="Also delete other people's matching messages where Telegram allows it "
         "(for both sides in private chats); by default only your own messages go",
     )
+    scan_limit: int = Flag(
+        default=10000,
+        description="Most search hits read, yours and others', before stopping; 0 reads them all",
+    )
     dry_run: bool = Flag(default=False, description=_DRY_RUN)
 
     def __post_init__(self) -> None:
         if self.max_matches < 1:
             raise ParseError("--max-matches must be at least 1", context={"flag": "max-matches"})
+        if self.scan_limit < 0:
+            raise ParseError(
+                "--scan-limit cannot be negative",
+                context={"flag": "scan-limit"},
+                suggestion="Pass 0 to read every search hit.",
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -447,6 +457,8 @@ class CleanupResult:
     """Other people's matches are deleted too; otherwise only the user's own messages"""
     skipped_others: int = 0
     """Matches other people sent, left in place because --include-others was not given"""
+    scan_capped: bool = False
+    """--scan-limit stopped the search before --max-matches: later hits were not checked"""
 
 
 async def cleanup_with(
@@ -455,15 +467,22 @@ async def cleanup_with(
     max_matches: int,
     dry_run: bool,
     include_others: bool = False,
+    scan_limit: int = 0,
 ) -> CleanupResult:
+    """``scan_limit`` caps the search hits read, in scope or not; 0 reads them all"""
     logger.info(f"Searching for matches for '{phrase}' across all chats...")
     by_chat: defaultdict[ChatId, list[int]] = defaultdict(list)
     peers: dict[ChatId, object] = {}
-    matched = skipped = 0
-    limit_reached = False
+    matched = skipped = scanned = 0
+    limit_reached = scan_capped = False
     # Telegram ignores sender filters in private chats, so check each hit's ``out`` here and
-    # keep reading until max_matches messages in scope are found or the results end
+    # keep reading until max_matches messages in scope are found, the results end, or
+    # scan_limit hits were read
     async for msg in client.iter_messages(None, search=phrase):
+        if scan_limit and scanned >= scan_limit:
+            scan_capped = True  # one more hit exists past the cap
+            break
+        scanned += 1
         if not msg.peer_id:
             continue
         if not (include_others or msg.out):
@@ -484,11 +503,13 @@ async def cleanup_with(
             summary += ", including other people's (for both sides in private chats)"
         elif skipped:
             summary += f"; keeps {skipped} sent by others"
+        if scan_capped:
+            summary += f"; stopped after reading {scan_limit} search hits"
         affects = Affects(summary, tuple(f"chat/{c}" for c in by_chat), matched)
         planned = tuple(ChatDeletion(c, len(ids)) for c, ids in by_chat.items())
         return CleanupResult(
             "would_delete", phrase, matched, limit_reached, planned, None, affects,
-            include_others=include_others, skipped_others=skipped,
+            include_others=include_others, skipped_others=skipped, scan_capped=scan_capped,
         )
 
     done: list[ChatDeletion] = []
@@ -509,7 +530,7 @@ async def cleanup_with(
     effect: Literal["deleted", "noop"] = "deleted" if total else "noop"
     result = CleanupResult(
         effect, phrase, matched, limit_reached, tuple(done), total,
-        include_others=include_others, skipped_others=skipped,
+        include_others=include_others, skipped_others=skipped, scan_capped=scan_capped,
     )
     failed = [d for d in done if d.error is not None]
     if failed:
@@ -527,7 +548,12 @@ async def cleanup_with(
 async def _cleanup(ctx: Ctx, args: CleanupArgs) -> CleanupResult:
     async with get_client(ctx) as client:
         return await cleanup_with(
-            client, args.phrase, args.max_matches, args.dry_run, args.include_others
+            client,
+            args.phrase,
+            args.max_matches,
+            args.dry_run,
+            args.include_others,
+            args.scan_limit,
         )
 
 
@@ -540,5 +566,13 @@ def cleanup(args: CleanupArgs, ctx: Ctx) -> CleanupResult:
                 "MATCH_LIMIT_REACHED",
                 f"Stopped at {args.max_matches} matches; more may remain.",
                 max_matches=args.max_matches,
+            )
+        if result.scan_capped:
+            ctx.warn(
+                "SCAN_LIMIT_REACHED",
+                f"Stopped after reading {args.scan_limit} search hits; later matches were not "
+                "checked.",
+                scan_limit=args.scan_limit,
+                suggestion="Raise --scan-limit, or pass --scan-limit 0 to read every search hit.",
             )
         return result
