@@ -14,7 +14,7 @@ from typing import Any, Literal
 from telethon import TelegramClient, utils
 from telethon.errors import FloodWaitError, RPCError
 from telethon.tl.functions.messages import DeleteHistoryRequest
-from telethon.tl.types import User
+from telethon.tl.types import Channel, ChannelForbidden, User
 from treaty import Affects, Arg, Ctx, Exit, Flag, ParseError
 
 from telegram_cli.client import get_client, resolve_entity
@@ -35,6 +35,10 @@ _BATCH = 100
 _ALL_MESSAGES = 0x7FFFFFFF
 
 _DRY_RUN = "Preview what would be deleted; change nothing"
+_JUST_ME = (
+    "Delete only your copy; the other side keeps theirs. Not available in channels and "
+    "supergroups, where deletion is always for everyone"
+)
 
 
 def _affected(results: Any, requested: int) -> int:
@@ -46,6 +50,27 @@ def _affected(results: Any, requested: int) -> int:
     """
     events: int = sum(r.pts_count for r in (results if isinstance(results, list) else [results]))
     return min(events, requested)
+
+
+def _refuse_just_me_in_channels(entities: dict[ChatId, object]) -> None:
+    """--just-me cannot work where Telegram deletes for everyone: refuse before deleting"""
+    channels = [c for c, e in entities.items() if isinstance(e, Channel | ChannelForbidden)]
+    if channels:
+        raise Exit.ARG_ERROR(
+            "--just-me does not work in channels and supergroups: Telegram deletes their "
+            "messages for everyone.",
+            context={"flag": "just-me", "chat_ids": [c.value for c in channels]},
+            suggestion="Drop --just-me to delete for everyone, or leave those chats out.",
+        )
+
+
+def _scope(entity: object, revoke: bool) -> str:
+    """How far a deletion reaches, for a preview summary"""
+    if isinstance(entity, User):
+        if entity.is_self:
+            return ""  # Saved Messages: there is no other side
+        return " for both sides" if revoke else " for you only; the other side keeps theirs"
+    return " for everyone" if revoke else " for you only; other members keep theirs"
 
 
 def _deletes_others(entity: object) -> bool:
@@ -65,6 +90,7 @@ class ChatDeleteArgs:
     remove: bool = Flag(
         default=False, description="Remove the dialog completely (leave the group/channel)"
     )
+    just_me: bool = Flag(default=False, description=_JUST_ME)
     dry_run: bool = Flag(default=False, description=_DRY_RUN)
 
 
@@ -79,18 +105,27 @@ class ChatDeleteResult:
     own_messages_only: bool = False
     """Not an admin of the group: only the user's own messages are deleted"""
     would_affect: Affects | None = None
+    revoked: bool = False
+    """Messages are (or would be) deleted for everyone in the chat, not only for the user"""
 
 
-async def clear_history_with(client: TelegramClient, entity: object, chat_id: ChatId) -> int:
-    """Delete every message the user may delete in a chat; returns how many were deleted"""
+async def clear_history_with(
+    client: TelegramClient, entity: object, chat_id: ChatId, revoke: bool = True
+) -> int:
+    """Delete every message the user may delete in a chat; returns how many were deleted
+
+    ``revoke`` deletes for both sides in private chats and for everyone in basic groups;
+    channels and supergroups always delete for everyone.
+    """
     if isinstance(entity, User):
-        # Private chats: DeleteHistoryRequest clears both sides, one batch per call
-        logger.info(f"Clearing all history for private chat {chat_id} (double-sided)...")
+        # Private chats: DeleteHistoryRequest clears the history, one batch per call
+        side = "both sides" if revoke else "your side only"
+        logger.info(f"Clearing all history for private chat {chat_id} ({side})...")
         total = 0
         while True:
             result = await client(
                 DeleteHistoryRequest(
-                    peer=entity, max_id=_ALL_MESSAGES, just_clear=False, revoke=True
+                    peer=entity, max_id=_ALL_MESSAGES, just_clear=False, revoke=revoke
                 )
             )
             total += int(result.pts_count)
@@ -105,18 +140,22 @@ async def clear_history_with(client: TelegramClient, entity: object, chat_id: Ch
     async for msg in client.iter_messages(entity, from_user=from_user):
         ids.append(msg.id)
         if len(ids) >= _BATCH:
-            total += _affected(await client.delete_messages(entity, ids), len(ids))
+            total += _affected(
+                await client.delete_messages(entity, ids, revoke=revoke), len(ids)
+            )
             ids = []
     if ids:
-        total += _affected(await client.delete_messages(entity, ids), len(ids))
+        total += _affected(await client.delete_messages(entity, ids, revoke=revoke), len(ids))
     return total
 
 
-async def remove_with(client: TelegramClient, entity: object, chat_id: ChatId) -> None:
+async def remove_with(
+    client: TelegramClient, entity: object, chat_id: ChatId, revoke: bool = True
+) -> None:
     if isinstance(entity, User):
-        # Delete everything for both sides and drop the dialog entry
-        logger.info(f"Removing private chat {chat_id} and revoking for both sides...")
-        await clear_history_with(client, entity, chat_id)
+        # Delete everything (for both sides unless revoke is off) and drop the dialog entry
+        logger.info(f"Removing private chat {chat_id}...")
+        await clear_history_with(client, entity, chat_id, revoke)
     else:
         # For channels/groups, delete_dialog leaves them
         logger.info(f"Leaving group/channel {chat_id} and removing from dialog list...")
@@ -144,17 +183,28 @@ async def remove_chat(ctx: Ctx, chat_id: ChatId) -> None:
 async def delete_chat_with(client: TelegramClient, args: ChatDeleteArgs) -> ChatDeleteResult:
     action: Literal["clear_history", "remove"] = "remove" if args.remove else "clear_history"
     entity = await resolve_entity(client, args.chat)
+    if args.just_me:
+        _refuse_just_me_in_channels({args.chat: entity})
     name = utils.get_display_name(entity)
+    revoke = not args.just_me
     own_only = not args.remove and not isinstance(entity, User) and not _deletes_others(entity)
+    # Removing a group or channel only leaves it; a private chat's history is cleared first
+    revoked = revoke and (isinstance(entity, User) or not args.remove)
     if args.dry_run:
-        if args.remove:
+        if args.remove and isinstance(entity, User):
+            summary = (
+                f"Removes chat {args.chat} ({name}), deleting its history"
+                f"{_scope(entity, revoke)}"
+            )
+        elif args.remove:
             summary = f"Removes chat {args.chat} ({name})"
         elif own_only:
             summary = (
-                f"Deletes your own messages in chat {args.chat} ({name}); you are not an admin"
+                f"Deletes your own messages in chat {args.chat} ({name})"
+                f"{_scope(entity, revoke)}; you are not an admin"
             )
         else:
-            summary = f"Clears all history of chat {args.chat} ({name})"
+            summary = f"Clears all history of chat {args.chat} ({name}){_scope(entity, revoke)}"
         return ChatDeleteResult(
             effect="would_delete",
             chat_id=args.chat,
@@ -162,11 +212,14 @@ async def delete_chat_with(client: TelegramClient, args: ChatDeleteArgs) -> Chat
             action=action,
             own_messages_only=own_only,
             would_affect=Affects(summary, (f"chat/{args.chat}",), 1),
+            revoked=revoked,
         )
     if args.remove:
-        await remove_with(client, entity, args.chat)
-        return ChatDeleteResult(effect="deleted", chat_id=args.chat, name=name, action=action)
-    count = await clear_history_with(client, entity, args.chat)
+        await remove_with(client, entity, args.chat, revoke)
+        return ChatDeleteResult(
+            effect="deleted", chat_id=args.chat, name=name, action=action, revoked=revoked
+        )
+    count = await clear_history_with(client, entity, args.chat, revoke)
     return ChatDeleteResult(
         effect="deleted" if count else "noop",
         chat_id=args.chat,
@@ -174,6 +227,7 @@ async def delete_chat_with(client: TelegramClient, args: ChatDeleteArgs) -> Chat
         action=action,
         deleted_count=count,
         own_messages_only=own_only,
+        revoked=revoked,
     )
 
 
@@ -198,6 +252,7 @@ class MessagesDeleteArgs:
         default=(), description="Message ID to delete, repeatable"
     )
     input_file: Path | None = Flag(default=None, description=INPUT_FILE_DESCRIPTION)
+    just_me: bool = Flag(default=False, description=_JUST_ME)
     dry_run: bool = Flag(default=False, description=_DRY_RUN)
 
     def __post_init__(self) -> None:
@@ -239,6 +294,8 @@ class MessagesDeleteResult:
     deleted_count: int | None = None
     """Messages Telegram reports as deleted; None on a dry run"""
     would_affect: Affects | None = None
+    revoked: bool = False
+    """Messages are (or would be) deleted for everyone in their chats, not only for the user"""
 
 
 type Targets = dict[ChatId, list[MessageId]]
@@ -271,13 +328,16 @@ def _preview_text(text: str | None) -> str:
 
 
 async def delete_messages_with(
-    client: TelegramClient, targets: Targets, dry_run: bool
+    client: TelegramClient, targets: Targets, dry_run: bool, just_me: bool = False
 ) -> MessagesDeleteResult:
     found: list[MessageRef] = []
     not_found: list[MessageKey] = []
-    entities: dict[ChatId, object] = {}
+    entities = {chat_id: await resolve_entity(client, chat_id) for chat_id in targets}
+    if just_me:
+        _refuse_just_me_in_channels(entities)
+    revoke = not just_me
     for chat_id, ids in targets.items():
-        entities[chat_id] = entity = await resolve_entity(client, chat_id)
+        entity = entities[chat_id]
         # Missing messages come back as None, in request order
         messages = await client.get_messages(entity, ids=[i.value for i in ids])
         for msg_id, msg in zip(ids, messages, strict=True):
@@ -288,38 +348,52 @@ async def delete_messages_with(
 
     chats = sorted({m.chat_id for m in found})
     if dry_run:
-        summary = (
-            f"Deletes {len(found)} message(s) from {len(chats)} chat(s)"
-            if found
-            else "Deletes nothing: none of the messages exist"
-        )
+        if not found:
+            summary = "Deletes nothing: none of the messages exist"
+        elif not revoke:
+            summary = (
+                f"Deletes {len(found)} message(s) from {len(chats)} chat(s) for you only; "
+                "the other side keeps theirs"
+            )
+        else:
+            summary = (
+                f"Deletes {len(found)} message(s) from {len(chats)} chat(s) for everyone "
+                "(for both sides in private chats)"
+            )
         affects = Affects(
             summary,
             tuple(f"chat/{m.chat_id}/message/{m.msg_id}" for m in found),
             len(found),
         )
-        return MessagesDeleteResult("would_delete", tuple(found), tuple(not_found), None, affects)
+        return MessagesDeleteResult(
+            "would_delete", tuple(found), tuple(not_found), None, affects, revoked=revoke
+        )
 
     deleted = 0
     for chat_id in chats:
         raw_ids = [m.msg_id.value for m in found if m.chat_id == chat_id]
         logger.info(f"Deleting {len(raw_ids)} messages from {chat_id}...")
         deleted += _affected(
-            await client.delete_messages(entities[chat_id], raw_ids), len(raw_ids)
+            await client.delete_messages(entities[chat_id], raw_ids, revoke=revoke),
+            len(raw_ids),
         )
     effect: Literal["deleted", "noop"] = "deleted" if deleted else "noop"
-    return MessagesDeleteResult(effect, tuple(found), tuple(not_found), deleted)
+    return MessagesDeleteResult(effect, tuple(found), tuple(not_found), deleted, revoked=revoke)
 
 
-async def _delete_messages(ctx: Ctx, targets: Targets, dry_run: bool) -> MessagesDeleteResult:
+async def _delete_messages(
+    ctx: Ctx, targets: Targets, dry_run: bool, just_me: bool
+) -> MessagesDeleteResult:
     async with get_client(ctx) as client:
-        return await delete_messages_with(client, targets, dry_run)
+        return await delete_messages_with(client, targets, dry_run, just_me)
 
 
 def delete_messages(args: MessagesDeleteArgs, ctx: Ctx) -> MessagesDeleteResult:
     """Delete specific messages by ID, or the messages piped in from `tg messages search`."""
     with logging_to(ctx):
-        result = asyncio.run(_delete_messages(ctx, _targets(args), args.dry_run))
+        result = asyncio.run(
+            _delete_messages(ctx, _targets(args), args.dry_run, args.just_me)
+        )
         if result.not_found:
             ctx.warn(
                 "MESSAGES_NOT_FOUND",

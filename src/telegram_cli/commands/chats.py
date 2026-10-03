@@ -300,6 +300,9 @@ async def _review_chat(
         dt = m.date.strftime("%Y-%m-%d %H:%M:%S") if m.date else ""
         lines.append(f"  [{dt}] {m.sender or 'Unknown'}: {m.text.strip()}")
     lines.append(rule)
+    if chat_id.value > 0:
+        # Marked peer IDs: positive ones are private chats, where history goes for both sides
+        lines.append("Deleting or removing this private chat clears it for both sides.")
     tty_out.write("\n".join(lines) + "\n")
 
     while True:
