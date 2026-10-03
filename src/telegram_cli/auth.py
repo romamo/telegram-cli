@@ -28,6 +28,7 @@ from treaty import Ctx, Exit, Flag, ParseError
 
 from telegram_cli.client import connected, rate_limited
 from telegram_cli.config import get_settings
+from telegram_cli.logs import logging_to
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,4 +197,5 @@ async def _auth_with(client: TelegramClient, args: AuthArgs, ctx: Ctx) -> AuthRe
 
 def run_auth(args: AuthArgs, ctx: Ctx) -> AuthResult:
     """Authenticate as a Telegram user (phone → OTP → optional 2FA)."""
-    return asyncio.run(_do_auth(args, ctx))
+    with logging_to(ctx):
+        return asyncio.run(_do_auth(args, ctx))

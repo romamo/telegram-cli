@@ -11,6 +11,7 @@ from treaty import Ctx, Exit, Flag, ParseError
 
 from telegram_cli.client import get_client, resolve_entity
 from telegram_cli.ids import ChatId, MessageId
+from telegram_cli.logs import logging_to
 from telegram_cli.utils import chat_id_field, message_id_field, read_piped_items
 
 
@@ -127,16 +128,17 @@ def _piped_selection() -> tuple[ChatId, list[MessageId]] | None:
 
 def export_messages(args: ExportArgs, ctx: Ctx) -> Iterator[ExportedMessage]:
     """Export messages from a chat or group, one event per message, newest first."""
-    chat_id, ids = args.chat, None
-    if chat_id is None:
-        selection = _piped_selection()
-        if selection is None:
-            raise Exit.ARG_ERROR(
-                "No chat to export.",
-                suggestion="Pass --chat ID, or pipe JSON from `tg messages search`.",
-            )
-        chat_id, ids = selection
-    yield from _blocking(export_stream(chat_id, args.limit, args.since, ids=ids or None))
+    with logging_to(ctx):
+        chat_id, ids = args.chat, None
+        if chat_id is None:
+            selection = _piped_selection()
+            if selection is None:
+                raise Exit.ARG_ERROR(
+                    "No chat to export.",
+                    suggestion="Pass --chat ID, or pipe JSON from `tg messages search`.",
+                )
+            chat_id, ids = selection
+        yield from _blocking(export_stream(chat_id, args.limit, args.since, ids=ids or None))
 
 
 def render_message(data: Any) -> str:

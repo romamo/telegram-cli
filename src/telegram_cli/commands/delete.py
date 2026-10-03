@@ -18,6 +18,7 @@ from treaty import Affects, Arg, Ctx, Exit, Flag, ParseError
 
 from telegram_cli.client import get_client, resolve_entity
 from telegram_cli.ids import ChatId, MessageId
+from telegram_cli.logs import logging_to
 from telegram_cli.utils import chat_id_field, message_id_field, read_piped_items
 
 logger = logging.getLogger(__name__)
@@ -165,7 +166,8 @@ async def _delete_chat(args: ChatDeleteArgs) -> ChatDeleteResult:
 
 def delete_chat(args: ChatDeleteArgs, ctx: Ctx) -> ChatDeleteResult:
     """Clear a chat's history, or remove the chat completely with --remove."""
-    return asyncio.run(_delete_chat(args))
+    with logging_to(ctx):
+        return asyncio.run(_delete_chat(args))
 
 
 # ── messages delete ───────────────────────────────────────────────────────────
@@ -288,14 +290,15 @@ async def _delete_messages(targets: Targets, dry_run: bool) -> MessagesDeleteRes
 
 def delete_messages(args: MessagesDeleteArgs, ctx: Ctx) -> MessagesDeleteResult:
     """Delete specific messages by ID, or the messages piped in from `tg messages search`."""
-    result = asyncio.run(_delete_messages(_targets(args), args.dry_run))
-    if result.not_found:
-        ctx.warn(
-            "MESSAGES_NOT_FOUND",
-            f"{len(result.not_found)} message(s) do not exist; they may already be deleted.",
-            count=len(result.not_found),
-        )
-    return result
+    with logging_to(ctx):
+        result = asyncio.run(_delete_messages(_targets(args), args.dry_run))
+        if result.not_found:
+            ctx.warn(
+                "MESSAGES_NOT_FOUND",
+                f"{len(result.not_found)} message(s) do not exist; they may already be deleted.",
+                count=len(result.not_found),
+            )
+        return result
 
 
 # ── messages cleanup ──────────────────────────────────────────────────────────
@@ -396,11 +399,12 @@ async def _cleanup(args: CleanupArgs) -> CleanupResult:
 
 def cleanup(args: CleanupArgs, ctx: Ctx) -> CleanupResult:
     """Find messages containing a phrase across all chats and delete them."""
-    result = asyncio.run(_cleanup(args))
-    if result.limit_reached:
-        ctx.warn(
-            "MATCH_LIMIT_REACHED",
-            f"Stopped at {args.max_matches} matches; more may remain.",
-            max_matches=args.max_matches,
-        )
-    return result
+    with logging_to(ctx):
+        result = asyncio.run(_cleanup(args))
+        if result.limit_reached:
+            ctx.warn(
+                "MATCH_LIMIT_REACHED",
+                f"Stopped at {args.max_matches} matches; more may remain.",
+                max_matches=args.max_matches,
+            )
+        return result

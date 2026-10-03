@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import IO, Any, Literal
 
 from telethon import TelegramClient
@@ -16,7 +17,8 @@ from treaty import Ctx, Exit, Flag, Page, ParseError
 
 from telegram_cli.client import get_client
 from telegram_cli.ids import ChatId
-from telegram_cli.utils import chat_id_field, fetch_count, read_piped_items
+from telegram_cli.logs import logging_to
+from telegram_cli.utils import chat_id_field, fetch_count, parse_piped_items
 
 logger = logging.getLogger(__name__)
 
@@ -208,10 +210,11 @@ def list_chats(args: ListChatsArgs, ctx: Ctx) -> Page[ChatRow]:
     Telegram's API has no server-side filter for type or name, so filters scan up to
     --scan-limit dialogs client-side.
     """
-    scan = asyncio.run(_fetch_dialogs(fetch_count(ctx.page), args))
-    if scan.capped:
-        warn_scan_capped(ctx, args.scan_limit)
-    return Page(items=scan.rows)
+    with logging_to(ctx):
+        scan = asyncio.run(_fetch_dialogs(fetch_count(ctx.page), args))
+        if scan.capped:
+            warn_scan_capped(ctx, args.scan_limit)
+        return Page(items=scan.rows)
 
 
 # ── chats review ──────────────────────────────────────────────────────────────
@@ -219,10 +222,21 @@ def list_chats(args: ListChatsArgs, ctx: Ctx) -> Page[ChatRow]:
 
 @dataclass(frozen=True, slots=True)
 class ReviewArgs:
-    chat: tuple[ChatId, ...] = Flag(
-        default=(),
-        description="Chat ID to review, repeatable; read from piped JSON when omitted",
+    chat: tuple[ChatId, ...] = Flag(default=(), description="Chat ID to review, repeatable")
+    input_file: Path | None = Flag(
+        default=None,
+        description="JSON from another tg command listing the chats, e.g. "
+        "--input-file <(tg chats list -q Work --format json)",
     )
+
+    def __post_init__(self) -> None:
+        if not self.chat and self.input_file is None:
+            raise ParseError(
+                "No chats to review",
+                context={"field": "chat"},
+                suggestion="Pass --chat ID, or --input-file with JSON from `tg chats list` "
+                "or `tg messages search`.",
+            )
 
 
 type ReviewAction = Literal["delete", "remove", "skip", "quit"]
@@ -253,19 +267,38 @@ _CHOICES: dict[str, ReviewAction] = {
 }
 
 
+def review_targets(args: ReviewArgs) -> dict[ChatId, str | None]:
+    """Chats to review, each with the text of the message search hit that found it, if any"""
+    targets: dict[ChatId, str | None] = dict.fromkeys(args.chat)
+    if args.input_file is not None:
+        try:
+            raw = args.input_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise Exit.ARG_ERROR(
+                f"Cannot read --input-file: {exc}.",
+                context={"input_file": str(args.input_file)},
+                suggestion="Pass a readable UTF-8 file of JSON from another tg command.",
+            ) from exc
+        for item in parse_piped_items(raw):
+            chat_id = chat_id_field(item, "chat_id", "id")
+            if chat_id is None:
+                continue
+            text = item.get("text")
+            if targets.get(chat_id) is None:
+                targets[chat_id] = text if isinstance(text, str) and text else None
+    if not targets:
+        raise Exit.ARG_ERROR(
+            "The input file lists no chats.",
+            context={"input_file": str(args.input_file)},
+            suggestion="Give it JSON with `id` or `chat_id` fields, e.g. from `tg chats list`.",
+        )
+    return targets
+
+
 @contextmanager
 def _tty() -> Iterator[tuple[IO[str], IO[str]]]:
-    """The controlling terminal, which stays reachable while stdin carries piped JSON"""
-    try:
-        tty_in = open("/dev/tty")  # noqa: SIM115 - closed below
-        tty_out = open("/dev/tty", "w")  # noqa: SIM115 - closed below
-    except OSError as exc:
-        raise Exit.PRECONDITION(
-            "Chat review asks a person what to do with each chat, and no terminal is attached.",
-            code="INPUT_REQUIRED",
-            suggestion="Run it in a terminal, or use `tg chats delete --chat ID` instead.",
-        ) from exc
-    with tty_in, tty_out:
+    """The terminal the person answers on; treaty keeps sys.stdin from reading it"""
+    with open("/dev/tty") as tty_in, open("/dev/tty", "w") as tty_out:
         yield tty_in, tty_out
 
 
@@ -300,41 +333,34 @@ async def _review_chat(
 
 def review_chats(args: ReviewArgs, ctx: Ctx) -> ReviewResult:
     """Interactively review chats and delete their history or remove them."""
-    from telegram_cli.commands.delete import delete_chat_history, remove_chat
+    with logging_to(ctx):
+        from telegram_cli.commands.delete import delete_chat_history, remove_chat
 
-    # chat_id -> the text snippet of a piped message search hit, if any
-    to_review: dict[ChatId, str | None] = dict.fromkeys(args.chat)
-    if not to_review:
-        for item in read_piped_items():
-            chat_id = chat_id_field(item, "chat_id", "id")
-            if chat_id is None:
-                continue
-            text = item.get("text")
-            snippet = text if isinstance(text, str) and text else None
-            if to_review.get(chat_id) is None:
-                to_review[chat_id] = snippet
+        # Treaty's verdict: stdin and stdout are terminals and --non-interactive is absent.
+        # Off a terminal, in `tg exec`, or over MCP no one can answer, so nothing may start.
+        if not ctx.prompter.interactive:
+            raise Exit.PRECONDITION(
+                "Chat review asks a person what to do with each chat, and no one can answer here.",
+                code="INPUT_REQUIRED",
+                suggestion="Run it in a terminal; agents use `tg chats delete --chat ID` instead.",
+            )
 
-    if not to_review:
-        raise Exit.ARG_ERROR(
-            "No chats to review.",
-            suggestion="Pass --chat, or pipe JSON from `tg chats list` or `tg messages search`.",
-        )
+        to_review = review_targets(args)
+        ctx.log("Starting interactive review", chats=len(to_review))
+        reviewed: list[ReviewedChat] = []
+        with _tty() as (tty_in, tty_out):
+            for chat_id, match_text in to_review.items():
+                action = asyncio.run(_review_chat(chat_id, match_text, tty_in, tty_out))
+                if action == "quit":
+                    break
+                if action == "delete":
+                    asyncio.run(delete_chat_history(chat_id))
+                    reviewed.append(ReviewedChat(chat_id, "deleted_history"))
+                elif action == "remove":
+                    asyncio.run(remove_chat(chat_id))
+                    reviewed.append(ReviewedChat(chat_id, "removed"))
+                else:
+                    reviewed.append(ReviewedChat(chat_id, "skipped"))
 
-    ctx.log("Starting interactive review", chats=len(to_review))
-    reviewed: list[ReviewedChat] = []
-    with _tty() as (tty_in, tty_out):
-        for chat_id, match_text in to_review.items():
-            action = asyncio.run(_review_chat(chat_id, match_text, tty_in, tty_out))
-            if action == "quit":
-                break
-            if action == "delete":
-                asyncio.run(delete_chat_history(chat_id))
-                reviewed.append(ReviewedChat(chat_id, "deleted_history"))
-            elif action == "remove":
-                asyncio.run(remove_chat(chat_id))
-                reviewed.append(ReviewedChat(chat_id, "removed"))
-            else:
-                reviewed.append(ReviewedChat(chat_id, "skipped"))
-
-    changed = any(r.action != "skipped" for r in reviewed)
-    return ReviewResult(effect="deleted" if changed else "noop", reviewed=tuple(reviewed))
+        changed = any(r.action != "skipped" for r in reviewed)
+        return ReviewResult(effect="deleted" if changed else "noop", reviewed=tuple(reviewed))

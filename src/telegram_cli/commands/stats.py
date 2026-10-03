@@ -8,6 +8,7 @@ from treaty import Ctx, NoArgs
 
 from telegram_cli.client import get_client
 from telegram_cli.commands.chats import ChatType, dialog_type
+from telegram_cli.logs import logging_to
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,4 +64,5 @@ def stats(args: NoArgs, ctx: Ctx) -> Stats:
 
     Fetches all dialogs to compute aggregates, so it may take a while with many chats.
     """
-    return asyncio.run(_fetch_stats())
+    with logging_to(ctx):
+        return asyncio.run(_fetch_stats())

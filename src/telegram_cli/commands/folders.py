@@ -13,6 +13,7 @@ from treaty import Affects, Arg, Ctx, Exit, Flag, NoArgs
 
 from telegram_cli.client import get_client
 from telegram_cli.ids import ChatId
+from telegram_cli.logs import logging_to
 from telegram_cli.utils import chat_id_field, read_piped_items
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,8 @@ async def _list_folders() -> list[FolderInfo]:
 
 def list_folders(args: NoArgs, ctx: Ctx) -> list[FolderInfo]:
     """List all your Telegram folders."""
-    return asyncio.run(_list_folders())
+    with logging_to(ctx):
+        return asyncio.run(_list_folders())
 
 
 # ── folders create / add / remove ─────────────────────────────────────────────
@@ -146,7 +148,8 @@ async def _create_folder(name: str) -> FolderResult:
 
 def create_folder(args: FolderNameArgs, ctx: Ctx) -> FolderResult:
     """Create a new empty folder."""
-    return asyncio.run(_create_folder(args.name))
+    with logging_to(ctx):
+        return asyncio.run(_create_folder(args.name))
 
 
 def _peer_id(peer: Any) -> int:
@@ -220,12 +223,14 @@ def _chat_ids(args: FolderPeersArgs) -> list[ChatId]:
 
 def add_to_folder(args: FolderPeersArgs, ctx: Ctx) -> FolderResult:
     """Add chats to a folder, creating the folder when it does not exist."""
-    return asyncio.run(_mutate_folder_peers(ctx, args.folder, _chat_ids(args), "add"))
+    with logging_to(ctx):
+        return asyncio.run(_mutate_folder_peers(ctx, args.folder, _chat_ids(args), "add"))
 
 
 def remove_from_folder(args: FolderPeersArgs, ctx: Ctx) -> FolderResult:
     """Remove chats from a folder."""
-    return asyncio.run(_mutate_folder_peers(ctx, args.folder, _chat_ids(args), "remove"))
+    with logging_to(ctx):
+        return asyncio.run(_mutate_folder_peers(ctx, args.folder, _chat_ids(args), "remove"))
 
 
 # ── folders delete ────────────────────────────────────────────────────────────
@@ -266,4 +271,5 @@ async def _delete_folder(folder: str, dry_run: bool) -> FolderDeleteResult:
 
 def delete_folder(args: FolderDeleteArgs, ctx: Ctx) -> FolderDeleteResult:
     """Delete a folder entirely; the chats in it are kept."""
-    return asyncio.run(_delete_folder(args.folder, args.dry_run))
+    with logging_to(ctx):
+        return asyncio.run(_delete_folder(args.folder, args.dry_run))

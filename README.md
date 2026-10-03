@@ -82,13 +82,18 @@ uv run tg chats delete --chat 12345 --confirm-destructive
 # Commands that take IDs also read piped JSON from other tg commands
 uv run tg messages search "old number" | uv run tg messages delete --confirm-destructive
 uv run tg search "flutter" | uv run tg folders add "Work"
-uv run tg chats list --query "Publa" | uv run tg chats review
+
+# Review chats one by one at a terminal (agents use `chats delete`)
+uv run tg chats review --chat 12345 --chat 67890
+uv run tg chats review --input-file <(uv run tg chats list --query "Publa" --format json)
 ```
 
 ### Output and agents
 
 - Output is `plain` text in a terminal and a JSON envelope (`ok`, `data`, `error`, `meta`) when piped; force one with `--format plain|json|jsonl|tsv`
 - `uv run tg manifest` prints every command, flag, and exit code; `uv run tg <command> --schema` prints one command's parameters and output schema
+- Progress logs go to stderr: JSON lines when stdout is piped, `message key=value` in a terminal
+- `chats review` is the only interactive command; with no terminal (or `--non-interactive`, `tg exec`, MCP) it exits `4` with `INPUT_REQUIRED` before doing anything
 - Destructive commands (`chats delete`, `messages delete`, `messages cleanup`, `folders delete`) only preview unless given `--confirm-destructive`
 - `--chat` always takes a chat ID and `--message` a message ID; repeat a flag to pass several: `--chat 111 --chat 222`
 - Exit codes are typed: `2` bad arguments, `3` partial failure, `5` not found, `7` permission denied, `8` not authenticated (run `tg auth`), `11` rate limited

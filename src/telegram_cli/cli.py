@@ -89,15 +89,19 @@ chats_group.command(
 
 chats_group.command(
     "review",
-    description="Interactively review chats one by one and delete or remove them; "
-    "takes --chat or piped JSON and asks on the terminal",
+    description="For a person at a terminal: review chats one by one and delete or remove "
+    "each; agents use `chats delete` instead. Exits 4 (INPUT_REQUIRED) when no one can answer",
     danger_level="mutating",
+    interactive=True,
     exit_codes=_NOT_FOUND,
     has_network_io=True,
     timeout=None,
     examples=[
-        ("Review chats matching a name", 'tg chats list --query "Publa" | tg chats review'),
-        ("Review chats holding a phrase", 'tg messages search "test" | tg chats review'),
+        ("Review two chats", "tg chats review --chat 111 --chat 222"),
+        (
+            "Review chats matching a name",
+            'tg chats review --input-file <(tg chats list --query "Publa" --format json)',
+        ),
     ],
 )(chats.review_chats)
 
