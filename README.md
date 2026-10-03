@@ -122,7 +122,10 @@ Register it with an MCP client (Claude Code `.mcp.json`, Claude Desktop `claude_
   "mcpServers": {
     "telegram": {
       "command": "uv",
-      "args": ["--directory", "/path/to/telegram-cli", "run", "treaty-mcp", "telegram_cli.cli:app"]
+      "args": [
+        "--directory", "/path/to/telegram-cli",
+        "run", "--extra", "mcp", "treaty-mcp", "telegram_cli.cli:app"
+      ]
     }
   }
 }
