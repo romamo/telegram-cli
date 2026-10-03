@@ -70,10 +70,12 @@ async def export_stream(
     limit: int | None,
     since: date | None,
     ids: list[MessageId] | None = None,
+    *,
+    check_privacy: bool = True,
 ) -> AsyncGenerator[ExportedMessage]:
     """Messages of a chat, newest first; only ``ids`` when given"""
     since_dt = datetime(since.year, since.month, since.day, tzinfo=UTC) if since else None
-    async with get_client(ctx) as client:
+    async with get_client(ctx, check_privacy=check_privacy) as client:
         entity = await resolve_entity(client, chat_id)
 
         async def iterate_messages() -> AsyncGenerator[Any]:

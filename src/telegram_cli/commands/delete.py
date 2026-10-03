@@ -124,14 +124,20 @@ async def remove_with(client: TelegramClient, entity: object, chat_id: ChatId) -
 
 
 async def delete_chat_history(ctx: Ctx, chat_id: ChatId) -> int:
-    """Clear all messages in a dialog and return how many were deleted."""
-    async with get_client(ctx) as client:
+    """Clear all messages in a dialog and return how many were deleted.
+
+    Used by `chats review` after a connection that already checked privacy.
+    """
+    async with get_client(ctx, check_privacy=False) as client:
         return await clear_history_with(client, await resolve_entity(client, chat_id), chat_id)
 
 
 async def remove_chat(ctx: Ctx, chat_id: ChatId) -> None:
-    """Delete the dialog and remove it from the list (leaves a group/channel)."""
-    async with get_client(ctx) as client:
+    """Delete the dialog and remove it from the list (leaves a group/channel).
+
+    Used by `chats review` after a connection that already checked privacy.
+    """
+    async with get_client(ctx, check_privacy=False) as client:
         await remove_with(client, await resolve_entity(client, chat_id), chat_id)
 
 

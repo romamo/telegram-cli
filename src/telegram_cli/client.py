@@ -1,8 +1,9 @@
 """Telethon client factory — async context manager for all commands."""
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from telethon import TelegramClient
@@ -22,6 +23,19 @@ def new_client(cfg: Settings) -> tuple[TelegramClient, list[Exposure]]:
     """A client on a session file only the user can read, and any one found wider"""
     tightened = make_private_session(cfg.session_file)
     return TelegramClient(cfg.session_path, cfg.api_id, cfg.api_hash), tightened
+
+
+def checked_client(
+    ctx: Ctx, cfg: Settings, env: Iterable[Path], *, check_privacy: bool
+) -> TelegramClient:
+    """A new client; with ``check_privacy``, warns the run about files open to other users
+
+    The session file is made private either way; only the warnings are optional.
+    """
+    client, tightened = new_client(cfg)
+    if check_privacy:
+        warn_exposed(ctx, [*tightened, *exposures(cfg.session_dir, env)])
+    return client
 
 
 def rate_limited(exc: FloodWaitError) -> Exception:
@@ -52,15 +66,15 @@ def rpc_failure(exc: RPCError) -> Exception:
 
 
 @asynccontextmanager
-async def connected(ctx: Ctx) -> AsyncIterator[TelegramClient]:
+async def connected(ctx: Ctx, *, check_privacy: bool = True) -> AsyncIterator[TelegramClient]:
     """A connected client holding the session lock, logged in or not; disconnects after
 
-    Warns the run when the session or the credentials are open to other users.
+    With ``check_privacy``, warns the run when the session or the credentials are open to
+    other users; a run that connects several times passes it on its first connection only.
     """
     cfg = get_settings()
     async with session_lock(cfg.lock_path):
-        client, tightened = new_client(cfg)
-        warn_exposed(ctx, [*tightened, *exposures(cfg.session_dir, env_files())])
+        client = checked_client(ctx, cfg, env_files(), check_privacy=check_privacy)
         await client.connect()
         try:
             yield client
@@ -69,14 +83,14 @@ async def connected(ctx: Ctx) -> AsyncIterator[TelegramClient]:
 
 
 @asynccontextmanager
-async def get_client(ctx: Ctx) -> AsyncIterator[TelegramClient]:
+async def get_client(ctx: Ctx, *, check_privacy: bool = True) -> AsyncIterator[TelegramClient]:
     """Yield an authorized Telethon client, then cleanly disconnect.
 
     Raises AUTH_REQUIRED when no user is logged in, UNAVAILABLE (SESSION_BUSY) when another
     run holds the session, and turns Telegram errors raised in the body into typed exits:
     RATE_LIMITED, PERMISSION_DENIED, or GENERAL_ERROR.
     """
-    async with connected(ctx) as client:
+    async with connected(ctx, check_privacy=check_privacy) as client:
         if not await client.is_user_authorized():
             raise Exit.AUTH_REQUIRED(
                 "Not authenticated with Telegram.",

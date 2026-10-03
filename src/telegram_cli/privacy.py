@@ -20,10 +20,6 @@ PRIVATE_FILE = 0o600
 _SHARED = stat.S_IRWXG | stat.S_IRWXO
 """Any permission for the group or for others"""
 
-# Request IDs of the runs already warned: one run may connect several times (chats review)
-_warned_runs: set[str] = set()
-
-
 @dataclass(frozen=True, slots=True)
 class Exposure:
     """A file or directory the group or others can access"""
@@ -108,9 +104,6 @@ def exposures(session_dir: Path, env_files: Iterable[Path]) -> list[Exposure]:
 
 
 def warn_exposed(ctx: Ctx, found: Iterable[Exposure]) -> None:
-    """Add a warning per exposure to the run's response, once per run"""
-    if ctx.request_id in _warned_runs:
-        return
-    _warned_runs.add(ctx.request_id)
+    """Add a warning per exposure to the run's response"""
     for exposure in found:
         exposure.warn(ctx)

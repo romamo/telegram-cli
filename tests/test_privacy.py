@@ -13,9 +13,9 @@ from typing import Any
 import pytest
 from treaty import App, Ctx, NoArgs
 
-from telegram_cli.client import new_client
+from telegram_cli.client import checked_client, new_client
 from telegram_cli.config import Settings
-from telegram_cli.privacy import exposures, make_private_dir, warn_exposed
+from telegram_cli.privacy import exposures, make_private_dir
 
 
 @pytest.fixture(autouse=True)
@@ -81,13 +81,16 @@ class _Done:
 
 
 def _warnings(session_dir: Path, env_file: Path) -> list[dict[str, Any]]:
-    """The warnings of one run that checks twice, as `tg chats review` connects repeatedly"""
+    """The warnings of a run connecting three times, checking privacy on the first only,
+    as `tg chats review` does"""
     app = App("privacydemo", version="0")
+    env = [env_file, session_dir / "missing.env"]
 
-    @app.command("work", description="Check the files", danger_level="safe", exit_codes=())
+    @app.command("work", description="Open the session", danger_level="safe", exit_codes=())
     def work(args: NoArgs, ctx: Ctx) -> _Done:
-        for _ in range(2):
-            warn_exposed(ctx, exposures(session_dir, [env_file, session_dir / "missing.env"]))
+        for index in range(3):
+            client = checked_client(ctx, settings(session_dir), env, check_privacy=index == 0)
+            client.session.close()
         return _Done(True)
 
     out = io.StringIO()
@@ -123,3 +126,17 @@ class TestWarnings:
         env_file.write_text("TG_API_HASH=secret\n")
         env_file.chmod(0o600)
         assert _warnings(tmp_path / "s", env_file) == []
+
+    def test_each_exposure_warns_once_per_run(self, tmp_path: Path) -> None:
+        session_dir = tmp_path / "chosen"
+        session_dir.mkdir(mode=0o755)
+        open_session(session_dir)
+        (session_dir / "session.session").chmod(0o644)
+        env_file = tmp_path / ".env"
+        env_file.write_text("TG_API_HASH=secret\n")
+        warnings = _warnings(session_dir, env_file)
+        assert sorted((w["code"], w["context"]["path"]) for w in warnings) == [
+            ("PERMISSIONS_TOO_OPEN", str(env_file)),
+            ("PERMISSIONS_TOO_OPEN", str(session_dir)),
+            ("SESSION_FILE_TIGHTENED", str(session_dir / "session.session")),
+        ]
