@@ -410,6 +410,11 @@ def delete_messages(args: MessagesDeleteArgs, ctx: Ctx) -> MessagesDeleteResult:
 class CleanupArgs:
     phrase: str = Arg(description="Phrase to search for across all chats")
     max_matches: int = Flag(default=1000, description="Most matching messages one run deletes")
+    include_others: bool = Flag(
+        default=False,
+        description="Also delete other people's matching messages where Telegram allows it "
+        "(for both sides in private chats); by default only your own messages go",
+    )
     dry_run: bool = Flag(default=False, description=_DRY_RUN)
 
     def __post_init__(self) -> None:
@@ -432,38 +437,58 @@ class CleanupResult:
     effect: Literal["deleted", "noop", "would_delete"]
     phrase: str
     matched: int
+    """Matches in scope: your own messages, or everyone's with --include-others"""
     limit_reached: bool
     """--max-matches was reached: more matches may remain, so run the cleanup again"""
     chats: tuple[ChatDeletion, ...]
     deleted_count: int | None = None
     would_affect: Affects | None = None
+    include_others: bool = False
+    """Other people's matches are deleted too; otherwise only the user's own messages"""
+    skipped_others: int = 0
+    """Matches other people sent, left in place because --include-others was not given"""
 
 
 async def cleanup_with(
-    client: TelegramClient, phrase: str, max_matches: int, dry_run: bool
+    client: TelegramClient,
+    phrase: str,
+    max_matches: int,
+    dry_run: bool,
+    include_others: bool = False,
 ) -> CleanupResult:
     logger.info(f"Searching for matches for '{phrase}' across all chats...")
-    messages = await client.get_messages(None, search=phrase, limit=max_matches)
-    limit_reached = len(messages) >= max_matches
-
     by_chat: defaultdict[ChatId, list[int]] = defaultdict(list)
     peers: dict[ChatId, object] = {}
-    for msg in messages:
-        if msg.peer_id:
-            chat_id = ChatId(utils.get_peer_id(msg.peer_id))
-            peers[chat_id] = msg.peer_id
-            by_chat[chat_id].append(msg.id)
-    matched = sum(len(ids) for ids in by_chat.values())
+    matched = skipped = 0
+    limit_reached = False
+    # Telegram ignores sender filters in private chats, so check each hit's ``out`` here and
+    # keep reading until max_matches messages in scope are found or the results end
+    async for msg in client.iter_messages(None, search=phrase):
+        if not msg.peer_id:
+            continue
+        if not (include_others or msg.out):
+            skipped += 1
+            continue
+        chat_id = ChatId(utils.get_peer_id(msg.peer_id))
+        peers[chat_id] = msg.peer_id
+        by_chat[chat_id].append(msg.id)
+        matched += 1
+        if matched >= max_matches:
+            limit_reached = True
+            break
 
+    scope = "message(s)" if include_others else "of your own message(s)"
     if dry_run:
-        affects = Affects(
-            f"Deletes {matched} message(s) matching {phrase!r} from {len(by_chat)} chat(s)",
-            tuple(f"chat/{c}" for c in by_chat),
-            matched,
-        )
+        summary = f"Deletes {matched} {scope} matching {phrase!r} from {len(by_chat)} chat(s)"
+        if include_others:
+            summary += ", including other people's (for both sides in private chats)"
+        elif skipped:
+            summary += f"; keeps {skipped} sent by others"
+        affects = Affects(summary, tuple(f"chat/{c}" for c in by_chat), matched)
         planned = tuple(ChatDeletion(c, len(ids)) for c, ids in by_chat.items())
         return CleanupResult(
-            "would_delete", phrase, matched, limit_reached, planned, None, affects
+            "would_delete", phrase, matched, limit_reached, planned, None, affects,
+            include_others=include_others, skipped_others=skipped,
         )
 
     done: list[ChatDeletion] = []
@@ -482,7 +507,10 @@ async def cleanup_with(
 
     total = sum(d.deleted or 0 for d in done)
     effect: Literal["deleted", "noop"] = "deleted" if total else "noop"
-    result = CleanupResult(effect, phrase, matched, limit_reached, tuple(done), total)
+    result = CleanupResult(
+        effect, phrase, matched, limit_reached, tuple(done), total,
+        include_others=include_others, skipped_others=skipped,
+    )
     failed = [d for d in done if d.error is not None]
     if failed:
         raise Exit.PARTIAL_FAILURE(
@@ -498,11 +526,13 @@ async def cleanup_with(
 
 async def _cleanup(ctx: Ctx, args: CleanupArgs) -> CleanupResult:
     async with get_client(ctx) as client:
-        return await cleanup_with(client, args.phrase, args.max_matches, args.dry_run)
+        return await cleanup_with(
+            client, args.phrase, args.max_matches, args.dry_run, args.include_others
+        )
 
 
 def cleanup(args: CleanupArgs, ctx: Ctx) -> CleanupResult:
-    """Find messages containing a phrase across all chats and delete them."""
+    """Find your messages containing a phrase across all chats and delete them."""
     with logging_to(ctx):
         result = asyncio.run(_cleanup(ctx, args))
         if result.limit_reached:

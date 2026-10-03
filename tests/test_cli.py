@@ -131,3 +131,10 @@ def test_version_comes_from_the_package() -> None:
     pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
     _, envelope = tg("version")
     assert envelope["data"]["version"] == pyproject["project"]["version"]
+
+
+def test_cleanup_schema_offers_include_others_and_reports_skips() -> None:
+    code, envelope = tg("messages", "cleanup", "--schema")
+    assert code == 0
+    assert envelope["data"]["flags"]["include-others"]["default"] is False
+    assert "skipped_others" in json.dumps(envelope["data"])

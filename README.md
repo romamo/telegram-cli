@@ -77,6 +77,10 @@ uv run tg messages export --chat 12345 --since 2025-01-01 > chat.jsonl
 uv run tg messages delete --chat 12345 --message 111 --message 222
 uv run tg messages delete --chat 12345 --message 111 --message 222 --confirm-destructive
 
+# Delete your own messages containing a phrase, in every chat
+uv run tg messages cleanup "old phone number" --dry-run
+uv run tg messages cleanup "old phone number" --confirm-destructive
+
 # Clear a chat's history, or leave/remove it with --remove
 uv run tg chats delete --chat 12345 --dry-run
 uv run tg chats delete --chat 12345 --confirm-destructive
@@ -103,6 +107,7 @@ uv run tg chats review --input-file <(uv run tg chats list --query "Publa" --for
 - In private chats `chats delete` and `messages delete` delete for both sides, and the preview says so; `--just-me` deletes only your copy (`revoked: false` in the result). Channels and supergroups always delete for everyone, so `--just-me` exits `2` there before deleting anything
 - `--chat` always takes a chat ID and `--message` a message ID; repeat a flag to pass several: `--chat 111 --chat 222`
 - Exit codes are typed: `2` bad arguments, `3` partial failure, `5` not found, `7` permission denied, `8` not authenticated (run `tg auth`), `11` rate limited
+- `messages cleanup` deletes only your own messages by default and reports others' matches it kept as `skipped_others`; `--include-others` also deletes other people's matches where Telegram allows it (in private chats, for both sides)
 - Repeating a delete is safe: once nothing is left it reports `effect: "noop"` instead of failing
 - Filters on `chats list` and `search` scan up to `--scan-limit` dialogs (default 3000, `0` for all) and warn with `SCAN_LIMIT_REACHED` when they stop early; `messages cleanup` does the same with `--max-matches` and `MATCH_LIMIT_REACHED`
 

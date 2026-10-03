@@ -118,19 +118,61 @@ class TestMessagesDelete:
 
 
 class TestCleanup:
-    def test_deletes_matches_in_every_chat(self) -> None:
+    def test_deletes_own_matches_in_every_chat(self) -> None:
         client = FakeClient()
-        a = client.add_chat(user(5), "spam 1", "keep")
-        b = client.add_chat(user(6, "Bob"), "spam 2")
+        a = client.add_chat(user(5), "spam 1", "keep", out=True)
+        b = client.add_chat(user(6, "Bob"), "spam 2", out=True)
         result = run(cleanup_with(client, "spam", 100, dry_run=False))
         assert (result.effect, result.matched, result.deleted_count) == ("deleted", 2, 2)
         assert [m.message for m in client.messages[a]] == ["keep"]
         assert client.messages[b] == []
 
+    def test_keeps_other_peoples_matches_by_default(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(user(5), "spam from Ann")
+        client.add_chat(user(5), "spam from me", out=True)
+        result = run(cleanup_with(client, "spam", 100, dry_run=False))
+        assert (result.matched, result.deleted_count, result.skipped_others) == (1, 1, 1)
+        assert not result.include_others
+        assert [m.message for m in client.messages[chat]] == ["spam from Ann"]
+
+    def test_include_others_deletes_everyones_matches(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(user(5), "spam from Ann")
+        client.add_chat(user(5), "spam from me", out=True)
+        result = run(cleanup_with(client, "spam", 100, dry_run=False, include_others=True))
+        assert (result.matched, result.deleted_count, result.skipped_others) == (2, 2, 0)
+        assert result.include_others
+        assert client.messages[chat] == []
+
+    def test_dry_run_names_the_scope(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(user(5), "spam from Ann")
+        client.add_chat(user(5), "spam from me", out=True)
+        own = run(cleanup_with(client, "spam", 100, dry_run=True))
+        everyone = run(cleanup_with(client, "spam", 100, dry_run=True, include_others=True))
+        assert own.would_affect is not None and everyone.would_affect is not None
+        assert own.would_affect.summary == (
+            "Deletes 1 of your own message(s) matching 'spam' from 1 chat(s); "
+            "keeps 1 sent by others"
+        )
+        assert "including other people's (for both sides" in everyone.would_affect.summary
+        assert everyone.would_affect.count == 2
+        assert len(client.messages[chat]) == 2
+
+    def test_max_matches_counts_only_messages_in_scope(self) -> None:
+        client = FakeClient()
+        client.add_chat(user(5), "spam a", "spam b", "spam c")
+        client.add_chat(user(5), "spam mine 1", "spam mine 2", "spam mine 3", out=True)
+        result = run(cleanup_with(client, "spam", 2, dry_run=True))
+        assert (result.matched, result.skipped_others, result.limit_reached) == (2, 3, True)
+        # Stops reading the search once the limit is met
+        assert client.scanned == 5
+
     def test_one_forbidden_chat_is_a_partial_failure_and_the_rest_still_run(self) -> None:
         client = FakeClient()
-        blocked = client.add_chat(group(7), "spam here")
-        ok = client.add_chat(user(5), "spam there")
+        blocked = client.add_chat(group(7), "spam here", out=True)
+        ok = client.add_chat(user(5), "spam there", out=True)
         client.forbidden.add(blocked)
         with pytest.raises(CliExit) as caught:
             run(cleanup_with(client, "spam", 100, dry_run=False))
@@ -145,14 +187,20 @@ class TestCleanup:
 
     def test_flags_when_the_match_limit_is_reached(self) -> None:
         client = FakeClient()
-        client.add_chat(user(5), "spam 1", "spam 2", "spam 3")
+        client.add_chat(user(5), "spam 1", "spam 2", "spam 3", out=True)
         result = run(cleanup_with(client, "spam", 2, dry_run=True))
         assert result.limit_reached
         assert result.matched == 2
 
+    def test_fewer_matches_than_the_limit_are_not_flagged(self) -> None:
+        client = FakeClient()
+        client.add_chat(user(5), "spam 1", out=True)
+        result = run(cleanup_with(client, "spam", 2, dry_run=True))
+        assert not result.limit_reached
+
     def test_nothing_left_is_a_noop(self) -> None:
         client = FakeClient()
-        client.add_chat(user(5), "keep")
+        client.add_chat(user(5), "keep", out=True)
         result = run(cleanup_with(client, "spam", 100, dry_run=False))
         assert (result.effect, result.deleted_count) == ("noop", 0)
 
