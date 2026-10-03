@@ -90,7 +90,7 @@ class FolderNameArgs:
 @dataclass(frozen=True, slots=True)
 class FolderPeersArgs:
     folder: str = Arg(description="Folder name or ID")
-    ids: tuple[ChatId, ...] = Flag(
+    chat: tuple[ChatId, ...] = Flag(
         default=(), description="Chat ID, repeatable; read from piped JSON when omitted"
     )
 
@@ -205,15 +205,15 @@ async def _mutate_folder_peers(
 
 
 def _chat_ids(args: FolderPeersArgs) -> list[ChatId]:
-    if args.ids:
-        return list(dict.fromkeys(args.ids))
+    if args.chat:
+        return list(dict.fromkeys(args.chat))
     ids = [
         c for item in read_piped_items() if (c := chat_id_field(item, "id", "chat_id")) is not None
     ]
     if not ids:
         raise Exit.ARG_ERROR(
             "No chat IDs given.",
-            suggestion="Pass --ids, or pipe JSON from `tg search` or `tg chats list`.",
+            suggestion="Pass --chat, or pipe JSON from `tg search` or `tg chats list`.",
         )
     return list(dict.fromkeys(ids))
 

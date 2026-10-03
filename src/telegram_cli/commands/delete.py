@@ -48,7 +48,7 @@ def _deletes_others(entity: object) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class ChatDeleteArgs:
-    id: ChatId = Flag(description="Chat or group ID (from `tg chats list`)")
+    chat: ChatId = Flag(description="Chat or group ID (from `tg chats list`)")
     remove: bool = Flag(
         default=False, description="Remove the dialog completely (leave the group/channel)"
     )
@@ -124,31 +124,33 @@ async def remove_chat(chat_id: ChatId) -> None:
 
 async def delete_chat_with(client: TelegramClient, args: ChatDeleteArgs) -> ChatDeleteResult:
     action: Literal["clear_history", "remove"] = "remove" if args.remove else "clear_history"
-    entity = await resolve_entity(client, args.id)
+    entity = await resolve_entity(client, args.chat)
     name = utils.get_display_name(entity)
     own_only = not args.remove and not isinstance(entity, User) and not _deletes_others(entity)
     if args.dry_run:
         if args.remove:
-            summary = f"Removes chat {args.id} ({name})"
+            summary = f"Removes chat {args.chat} ({name})"
         elif own_only:
-            summary = f"Deletes your own messages in chat {args.id} ({name}); you are not an admin"
+            summary = (
+                f"Deletes your own messages in chat {args.chat} ({name}); you are not an admin"
+            )
         else:
-            summary = f"Clears all history of chat {args.id} ({name})"
+            summary = f"Clears all history of chat {args.chat} ({name})"
         return ChatDeleteResult(
             effect="would_delete",
-            chat_id=args.id,
+            chat_id=args.chat,
             name=name,
             action=action,
             own_messages_only=own_only,
-            would_affect=Affects(summary, (f"chat/{args.id}",), 1),
+            would_affect=Affects(summary, (f"chat/{args.chat}",), 1),
         )
     if args.remove:
-        await remove_with(client, entity, args.id)
-        return ChatDeleteResult(effect="deleted", chat_id=args.id, name=name, action=action)
-    count = await clear_history_with(client, entity, args.id)
+        await remove_with(client, entity, args.chat)
+        return ChatDeleteResult(effect="deleted", chat_id=args.chat, name=name, action=action)
+    count = await clear_history_with(client, entity, args.chat)
     return ChatDeleteResult(
         effect="deleted" if count else "noop",
-        chat_id=args.id,
+        chat_id=args.chat,
         name=name,
         action=action,
         deleted_count=count,
@@ -172,15 +174,17 @@ def delete_chat(args: ChatDeleteArgs, ctx: Ctx) -> ChatDeleteResult:
 @dataclass(frozen=True, slots=True)
 class MessagesDeleteArgs:
     chat: ChatId | None = Flag(default=None, description="Chat or group ID")
-    ids: tuple[MessageId, ...] = Flag(default=(), description="Message ID to delete, repeatable")
+    message: tuple[MessageId, ...] = Flag(
+        default=(), description="Message ID to delete, repeatable"
+    )
     dry_run: bool = Flag(default=False, description=_DRY_RUN)
 
     def __post_init__(self) -> None:
-        if (self.chat is None) != (not self.ids):
+        if (self.chat is None) != (not self.message):
             raise ParseError(
-                "--chat and --ids go together",
-                context={"field": "ids" if self.chat is not None else "chat"},
-                suggestion="Pass both --chat and --ids, or neither and pipe JSON from "
+                "--chat and --message go together",
+                context={"field": "message" if self.chat is not None else "chat"},
+                suggestion="Pass both --chat and --message, or neither and pipe JSON from "
                 "`tg messages search`.",
             )
 
@@ -216,7 +220,7 @@ type Targets = dict[ChatId, list[MessageId]]
 def _targets(args: MessagesDeleteArgs) -> Targets:
     """Message IDs to delete per chat, from the flags or from piped JSON"""
     if args.chat is not None:
-        return {args.chat: list(args.ids)}
+        return {args.chat: list(args.message)}
     by_chat: defaultdict[ChatId, list[MessageId]] = defaultdict(list)
     for item in read_piped_items():
         chat_id = chat_id_field(item, "chat_id")
@@ -226,7 +230,7 @@ def _targets(args: MessagesDeleteArgs) -> Targets:
     if not by_chat:
         raise Exit.ARG_ERROR(
             "No messages to delete.",
-            suggestion="Pass --chat ID --ids MSG_ID, or pipe JSON from `tg messages search`.",
+            suggestion="Pass --chat ID --message MSG_ID, or pipe JSON from `tg messages search`.",
         )
     return dict(by_chat)
 

@@ -219,7 +219,7 @@ def list_chats(args: ListChatsArgs, ctx: Ctx) -> Page[ChatRow]:
 
 @dataclass(frozen=True, slots=True)
 class ReviewArgs:
-    ids: tuple[ChatId, ...] = Flag(
+    chat: tuple[ChatId, ...] = Flag(
         default=(),
         description="Chat ID to review, repeatable; read from piped JSON when omitted",
     )
@@ -263,7 +263,7 @@ def _tty() -> Iterator[tuple[IO[str], IO[str]]]:
         raise Exit.PRECONDITION(
             "Chat review asks a person what to do with each chat, and no terminal is attached.",
             code="INPUT_REQUIRED",
-            suggestion="Run it in a terminal, or use `tg chats delete --id ID` instead.",
+            suggestion="Run it in a terminal, or use `tg chats delete --chat ID` instead.",
         ) from exc
     with tty_in, tty_out:
         yield tty_in, tty_out
@@ -303,7 +303,7 @@ def review_chats(args: ReviewArgs, ctx: Ctx) -> ReviewResult:
     from telegram_cli.commands.delete import delete_chat_history, remove_chat
 
     # chat_id -> the text snippet of a piped message search hit, if any
-    to_review: dict[ChatId, str | None] = dict.fromkeys(args.ids)
+    to_review: dict[ChatId, str | None] = dict.fromkeys(args.chat)
     if not to_review:
         for item in read_piped_items():
             chat_id = chat_id_field(item, "chat_id", "id")
@@ -317,7 +317,7 @@ def review_chats(args: ReviewArgs, ctx: Ctx) -> ReviewResult:
     if not to_review:
         raise Exit.ARG_ERROR(
             "No chats to review.",
-            suggestion="Pass --ids, or pipe JSON from `tg chats list` or `tg messages search`.",
+            suggestion="Pass --chat, or pipe JSON from `tg chats list` or `tg messages search`.",
         )
 
     ctx.log("Starting interactive review", chats=len(to_review))

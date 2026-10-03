@@ -82,15 +82,15 @@ chats_group.command(
     has_network_io=True,
     timeout=_LONG,
     examples=[
-        ("Preview clearing a chat", "tg chats delete --id 12345 --dry-run"),
-        ("Leave a group", "tg chats delete --id -100123 --remove --confirm-destructive"),
+        ("Preview clearing a chat", "tg chats delete --chat 12345 --dry-run"),
+        ("Leave a group", "tg chats delete --chat -100123 --remove --confirm-destructive"),
     ],
 )(delete.delete_chat)
 
 chats_group.command(
     "review",
     description="Interactively review chats one by one and delete or remove them; "
-    "takes --ids or piped JSON and asks on the terminal",
+    "takes --chat or piped JSON and asks on the terminal",
     danger_level="mutating",
     exit_codes=_NOT_FOUND,
     has_network_io=True,
@@ -138,7 +138,10 @@ messages_group.command(
     exit_codes=_NOT_FOUND,
     has_network_io=True,
     examples=[
-        ("Preview deleting two messages", "tg messages delete --chat 12345 --ids 111 --ids 222"),
+        (
+            "Preview deleting two messages",
+            "tg messages delete --chat 12345 --message 111 --message 222",
+        ),
         (
             "Delete search hits",
             'tg messages search "oops" | tg messages delete --confirm-destructive',
@@ -200,23 +203,23 @@ folders_group.command(
 
 folders_group.command(
     "add",
-    description="Add chats to a folder (by --ids or piped JSON), creating the folder if needed",
+    description="Add chats to a folder (by --chat or piped JSON), creating the folder if needed",
     danger_level="mutating",
     exit_codes=_NOT_FOUND,
     has_network_io=True,
     examples=[
-        ("Add two chats", 'tg folders add "Work" --ids 111 --ids 222'),
+        ("Add two chats", 'tg folders add "Work" --chat 111 --chat 222'),
         ("Add search hits", 'tg search "flutter" | tg folders add "Work"'),
     ],
 )(folders.add_to_folder)
 
 folders_group.command(
     "remove",
-    description="Remove chats from a folder (by --ids or piped JSON)",
+    description="Remove chats from a folder (by --chat or piped JSON)",
     danger_level="mutating",
     exit_codes=_NOT_FOUND,
     has_network_io=True,
-    examples=[("Remove a chat", 'tg folders remove "Work" --ids 111')],
+    examples=[("Remove a chat", 'tg folders remove "Work" --chat 111')],
 )(folders.remove_from_folder)
 
 folders_group.command(

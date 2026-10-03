@@ -47,11 +47,11 @@ def test_manifest_lists_every_command() -> None:
 @pytest.mark.parametrize(
     ("argv", "field"),
     [
-        (("messages", "delete", "--ids", "5"), "chat"),
-        (("messages", "delete", "--chat", "1"), "ids"),
-        (("messages", "delete", "--chat", "0", "--ids", "5"), "chat"),
-        (("messages", "delete", "--chat", "1", "--ids", "0"), "ids"),
-        (("chats", "delete", "--id", "x"), "id"),
+        (("messages", "delete", "--message", "5"), "chat"),
+        (("messages", "delete", "--chat", "1"), "message"),
+        (("messages", "delete", "--chat", "0", "--message", "5"), "chat"),
+        (("messages", "delete", "--chat", "1", "--message", "0"), "message"),
+        (("chats", "delete", "--chat", "x"), "chat"),
         (("chats", "list", "--scan-limit", "-1"), "scan-limit"),
         (("chats", "list", "--type", "bogus"), "type"),
         (("messages", "export", "--since", "2025-13-01"), "since"),
@@ -91,3 +91,27 @@ def test_missing_credentials_exit_4_with_a_fix(tmp_path: Path) -> None:
     assert done.returncode == 4
     assert envelope["error"]["code"] == "PRECONDITION"
     assert "TG_API_ID" in envelope["error"]["suggestion"]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ("chats", "delete", "--id", "5"),
+        ("messages", "delete", "--chat", "1", "--ids", "5"),
+        ("folders", "add", "Work", "--ids", "5"),
+        ("chats", "review", "--ids", "5"),
+    ],
+)
+def test_old_id_flags_are_refused(argv: tuple[str, ...]) -> None:
+    code, envelope = tg(*argv)
+    assert code == 2
+    assert envelope["error"]["phase"] == "validation"
+
+
+def test_chat_and_message_flags_mean_the_same_everywhere() -> None:
+    _, envelope = tg("manifest")
+    commands = envelope["data"]["commands"]
+    for path, flags in commands.items():
+        names = set(flags.get("flags", {}))
+        assert "id" not in names and "ids" not in names, path
+    assert {"chat", "message"} <= set(commands["messages.delete"]["flags"])

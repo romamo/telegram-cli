@@ -72,12 +72,12 @@ uv run tg messages search "invoice" --chat 12345
 uv run tg messages export --chat 12345 --since 2025-01-01 > chat.jsonl
 
 # Delete specific messages: preview first, then confirm
-uv run tg messages delete --chat 12345 --ids 111 --ids 222
-uv run tg messages delete --chat 12345 --ids 111 --ids 222 --confirm-destructive
+uv run tg messages delete --chat 12345 --message 111 --message 222
+uv run tg messages delete --chat 12345 --message 111 --message 222 --confirm-destructive
 
 # Clear a chat's history, or leave/remove it with --remove
-uv run tg chats delete --id 12345 --dry-run
-uv run tg chats delete --id 12345 --confirm-destructive
+uv run tg chats delete --chat 12345 --dry-run
+uv run tg chats delete --chat 12345 --confirm-destructive
 
 # Commands that take IDs also read piped JSON from other tg commands
 uv run tg messages search "old number" | uv run tg messages delete --confirm-destructive
@@ -90,7 +90,7 @@ uv run tg chats list --query "Publa" | uv run tg chats review
 - Output is `plain` text in a terminal and a JSON envelope (`ok`, `data`, `error`, `meta`) when piped; force one with `--format plain|json|jsonl|tsv`
 - `uv run tg manifest` prints every command, flag, and exit code; `uv run tg <command> --schema` prints one command's parameters and output schema
 - Destructive commands (`chats delete`, `messages delete`, `messages cleanup`, `folders delete`) only preview unless given `--confirm-destructive`
-- Repeat a flag to pass several values: `--ids 111 --ids 222`
+- `--chat` always takes a chat ID and `--message` a message ID; repeat a flag to pass several: `--chat 111 --chat 222`
 - Exit codes are typed: `2` bad arguments, `3` partial failure, `5` not found, `7` permission denied, `8` not authenticated (run `tg auth`), `11` rate limited
 - Repeating a delete is safe: once nothing is left it reports `effect: "noop"` instead of failing
 - Filters on `chats list` and `search` scan up to `--scan-limit` dialogs (default 3000, `0` for all) and warn with `SCAN_LIMIT_REACHED` when they stop early; `messages cleanup` does the same with `--max-matches` and `MATCH_LIMIT_REACHED`
