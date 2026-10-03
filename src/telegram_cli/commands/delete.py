@@ -4,7 +4,6 @@ The ``*_with`` coroutines take a connected client, so tests can drive them with 
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
@@ -20,6 +19,7 @@ from treaty import Affects, Arg, Ctx, Exit, Flag, ParseError
 from telegram_cli.client import get_client, resolve_entity
 from telegram_cli.ids import ChatId, MessageId
 from telegram_cli.logs import logging_to
+from telegram_cli.running import run_async
 from telegram_cli.utils import (
     INPUT_FILE_DESCRIPTION,
     chat_id_field,
@@ -239,7 +239,7 @@ async def _delete_chat(ctx: Ctx, args: ChatDeleteArgs) -> ChatDeleteResult:
 def delete_chat(args: ChatDeleteArgs, ctx: Ctx) -> ChatDeleteResult:
     """Clear a chat's history, or remove the chat completely with --remove."""
     with logging_to(ctx):
-        return asyncio.run(_delete_chat(ctx, args))
+        return run_async(_delete_chat(ctx, args))
 
 
 # ── messages delete ───────────────────────────────────────────────────────────
@@ -391,7 +391,7 @@ async def _delete_messages(
 def delete_messages(args: MessagesDeleteArgs, ctx: Ctx) -> MessagesDeleteResult:
     """Delete specific messages by ID, or the messages piped in from `tg messages search`."""
     with logging_to(ctx):
-        result = asyncio.run(
+        result = run_async(
             _delete_messages(ctx, _targets(args), args.dry_run, args.just_me)
         )
         if result.not_found:
@@ -560,7 +560,7 @@ async def _cleanup(ctx: Ctx, args: CleanupArgs) -> CleanupResult:
 def cleanup(args: CleanupArgs, ctx: Ctx) -> CleanupResult:
     """Find your messages containing a phrase across all chats and delete them."""
     with logging_to(ctx):
-        result = asyncio.run(_cleanup(ctx, args))
+        result = run_async(_cleanup(ctx, args))
         if result.limit_reached:
             ctx.warn(
                 "MATCH_LIMIT_REACHED",

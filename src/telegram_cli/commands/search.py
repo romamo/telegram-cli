@@ -18,6 +18,7 @@ from telegram_cli.commands.chats import (
 )
 from telegram_cli.ids import ChatId, MessageId
 from telegram_cli.logs import logging_to
+from telegram_cli.running import run_async
 from telegram_cli.utils import fetch_count
 
 # Results asked of Telegram's global directory when no limit is given
@@ -128,7 +129,7 @@ async def _combined_search(
 def search(args: SearchArgs, ctx: Ctx) -> Page[ChatMatch]:
     """Search chats by name: your dialogs first, then Telegram's global directory."""
     with logging_to(ctx):
-        matches, capped = asyncio.run(_combined_search(ctx, args, fetch_count(ctx.page)))
+        matches, capped = run_async(_combined_search(ctx, args, fetch_count(ctx.page)))
         if capped:
             warn_scan_capped(ctx, args.scan_limit)
         return Page(items=matches)
@@ -199,4 +200,4 @@ async def _search_messages(
 def search_messages(args: MessageSearchArgs, ctx: Ctx) -> Page[MessageMatch]:
     """Search inside message content (server-side) across all chats or in one chat."""
     with logging_to(ctx):
-        return Page(items=asyncio.run(_search_messages(ctx, args, fetch_count(ctx.page))))
+        return Page(items=run_async(_search_messages(ctx, args, fetch_count(ctx.page))))

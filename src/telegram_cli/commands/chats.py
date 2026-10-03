@@ -1,7 +1,6 @@
 """chats list / review — fetch Telegram dialogs and review them interactively."""
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import contextmanager
@@ -19,6 +18,7 @@ from telegram_cli.commands.delete import delete_chat_history, remove_chat
 from telegram_cli.commands.export import export_stream
 from telegram_cli.ids import ChatId
 from telegram_cli.logs import logging_to
+from telegram_cli.running import run_async
 from telegram_cli.utils import INPUT_FILE_DESCRIPTION, chat_id_field, fetch_count, load_items
 
 logger = logging.getLogger(__name__)
@@ -195,7 +195,7 @@ def list_chats(args: ListChatsArgs, ctx: Ctx) -> Page[ChatRow]:
     --scan-limit dialogs client-side.
     """
     with logging_to(ctx):
-        scan = asyncio.run(_fetch_dialogs(ctx, fetch_count(ctx.page), args))
+        scan = run_async(_fetch_dialogs(ctx, fetch_count(ctx.page), args))
         if scan.capped:
             warn_scan_capped(ctx, args.scan_limit)
         return Page(items=scan.rows)
@@ -333,7 +333,7 @@ def review_chats(args: ReviewArgs, ctx: Ctx) -> ReviewResult:
             # decides; one connection for the whole review would block every other tg run.
             # Only the first one checks privacy, so each warning appears once.
             for index, (chat_id, match_text) in enumerate(to_review.items()):
-                action = asyncio.run(
+                action = run_async(
                     _review_chat(
                         ctx, chat_id, match_text, tty_in, tty_out, check_privacy=index == 0
                     )
@@ -341,10 +341,10 @@ def review_chats(args: ReviewArgs, ctx: Ctx) -> ReviewResult:
                 if action == "quit":
                     break
                 if action == "delete":
-                    count = asyncio.run(delete_chat_history(ctx, chat_id))
+                    count = run_async(delete_chat_history(ctx, chat_id))
                     reviewed.append(ReviewedChat(chat_id, "deleted_history", count))
                 elif action == "remove":
-                    asyncio.run(remove_chat(ctx, chat_id))
+                    run_async(remove_chat(ctx, chat_id))
                     reviewed.append(ReviewedChat(chat_id, "removed"))
                 else:
                     reviewed.append(ReviewedChat(chat_id, "skipped"))

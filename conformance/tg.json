@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "tool": "tg 0.1.0",
+  "command": [
+    "tg"
+  ],
+  "timeout_seconds": 10,
+  "manifest": [
+    "manifest"
+  ],
+  "argument_order": {
+    "command_path": [
+      "chats",
+      "delete"
+    ],
+    "local_args": [
+      "--chat",
+      "12345",
+      "--dry-run"
+    ],
+    "global_flag": "--format",
+    "value": "json",
+    "alternate_value": "plain"
+  },
+  "probes": [
+    {
+      "name": "chats delete",
+      "argv": [
+        "chats",
+        "delete",
+        "--chat",
+        "12345"
+      ],
+      "kind": "destructive",
+      "dry_run_flag": "--dry-run"
+    },
+    {
+      "name": "chats list",
+      "argv": [
+        "chats",
+        "list",
+        "--year",
+        "2020"
+      ],
+      "kind": "read"
+    },
+    {
+      "name": "folders delete",
+      "argv": [
+        "folders",
+        "delete",
+        "Work"
+      ],
+      "kind": "destructive",
+      "dry_run_flag": "--dry-run"
+    },
+    {
+      "name": "folders list",
+      "argv": [
+        "folders",
+        "list"
+      ],
+      "kind": "read"
+    },
+    {
+      "name": "messages cleanup",
+      "argv": [
+        "messages",
+        "cleanup",
+        "old phone number"
+      ],
+      "kind": "destructive",
+      "dry_run_flag": "--dry-run"
+    },
+    {
+      "name": "messages delete",
+      "argv": [
+        "messages",
+        "delete",
+        "--chat",
+        "12345",
+        "--message",
+        "111",
+        "--message",
+        "222"
+      ],
+      "kind": "destructive",
+      "dry_run_flag": "--dry-run"
+    },
+    {
+      "name": "messages search",
+      "argv": [
+        "messages",
+        "search",
+        "quarterly report"
+      ],
+      "kind": "read"
+    },
+    {
+      "name": "search",
+      "argv": [
+        "search",
+        "quarterly report"
+      ],
+      "kind": "read"
+    },
+    {
+      "name": "stats",
+      "argv": [
+        "stats"
+      ],
+      "kind": "read"
+    },
+    {
+      "name": "version",
+      "argv": [
+        "version"
+      ],
+      "kind": "read"
+    },
+    {
+      "name": "unknown flag",
+      "argv": [
+        "chats",
+        "delete",
+        "--chat",
+        "12345",
+        "--no-such-flag"
+      ],
+      "kind": "invalid"
+    }
+  ]
+}

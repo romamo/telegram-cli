@@ -1,7 +1,6 @@
 """messages export — stream all messages from a chat."""
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncGenerator, Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -13,6 +12,7 @@ from treaty import Ctx, Exit, Flag, ParseError
 from telegram_cli.client import get_client, resolve_entity
 from telegram_cli.ids import ChatId, MessageId
 from telegram_cli.logs import logging_to
+from telegram_cli.running import cancellable_loop
 from telegram_cli.utils import (
     INPUT_FILE_DESCRIPTION,
     chat_id_field,
@@ -116,16 +116,15 @@ async def export_stream(
 
 def _blocking[T](agen: AsyncGenerator[T]) -> Iterator[T]:
     """Drive an async generator from synchronous code, one item per ``next()``"""
-    loop = asyncio.new_event_loop()
-    try:
-        while True:
-            try:
-                yield loop.run_until_complete(anext(agen))
-            except StopAsyncIteration:
-                return
-    finally:
-        loop.run_until_complete(agen.aclose())
-        loop.close()
+    with cancellable_loop() as loop:
+        try:
+            while True:
+                try:
+                    yield loop.run(anext(agen))
+                except StopAsyncIteration:
+                    return
+        finally:
+            loop.finish(agen.aclose())
 
 
 def _piped_selection(input_file: Path | None) -> tuple[ChatId, list[MessageId]] | None:
