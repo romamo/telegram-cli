@@ -6,14 +6,15 @@ import json
 from pathlib import Path
 
 import pytest
-from fakes import FakeClient, group, user
+from fakes import Dialog, FakeClient, group, user
+from telethon.tl.types import User
 from test_cli import tg
 from treaty import CliExit
 
 from telegram_cli.chat_type import ChatType
 from telegram_cli.commands.delete import MessagesDeleteArgs, _targets
 from telegram_cli.commands.folders import FolderPeersArgs, _chat_ids
-from telegram_cli.commands.search import search_messages_with
+from telegram_cli.commands.search import search_dialogs_with, search_messages_with
 from telegram_cli.ids import ChatId, MessageId
 from telegram_cli.utils import load_items
 
@@ -83,3 +84,21 @@ class TestMessageSearch:
         )
         assert [m.chat_id for m in found] == [ChatId(grp)]
         assert not [c for c in client.calls if c.startswith("get_entity")]
+
+
+class TestChatSearch:
+    def test_existing_chats_match_by_username_too(self) -> None:
+        roma = User(id=145, first_name="Roman", username="romavm")
+        client = FakeClient(dialogs=[Dialog(145, "Roman", roma), Dialog(7, "Ann", user(7))])
+        for phrase in ("romavm", "@romavm", "ROMA"):
+            found, _ = asyncio.run(search_dialogs_with(client, phrase, None, None, 0))
+            assert [(m.id, m.match) for m in found] == [
+                (ChatId(145), "name" if phrase == "ROMA" else "username")
+            ], phrase
+        assert found[0].snippet == "Roman"
+
+    def test_username_hits_show_the_handle(self) -> None:
+        roma = User(id=145, first_name="Roman", username="romavm")
+        client = FakeClient(dialogs=[Dialog(145, "Roman", roma)])
+        found, _ = asyncio.run(search_dialogs_with(client, "@romavm", None, None, 0))
+        assert found[0].snippet == "@romavm"

@@ -42,7 +42,7 @@ class ChatMatch:
     id: ChatId
     name: str
     type: ChatType
-    match: Literal["name", "global"]
+    match: Literal["name", "username", "global"]
     snippet: str
 
 
@@ -53,9 +53,10 @@ async def search_dialogs_with(
     chat_type: ChatType | None,
     scan_limit: int,
 ) -> tuple[list[ChatMatch], bool]:
-    """Search dialog names in the user's account, archived included; the flag says whether
-    the scan stopped at ``scan_limit`` dialogs (0: no limit)"""
+    """Search the names and usernames of the user's dialogs, archived included; the flag
+    says whether the scan stopped at ``scan_limit`` dialogs (0: no limit)"""
     phrase_lower = phrase.lower()
+    handle = phrase_lower.removeprefix("@")
     results: list[ChatMatch] = []
     fetched_count = 0
     async for d in client.iter_dialogs():
@@ -66,12 +67,18 @@ async def search_dialogs_with(
         if chat_type and dtype != chat_type:
             continue
         name = d.name or ""
+        username = getattr(d.entity, "username", None) or ""
         if phrase_lower in name.lower():
-            results.append(
-                ChatMatch(id=ChatId(d.id), name=name, type=dtype, match="name", snippet=name)
+            match = ChatMatch(id=ChatId(d.id), name=name, type=dtype, match="name", snippet=name)
+        elif handle and handle in username.lower():
+            match = ChatMatch(
+                id=ChatId(d.id), name=name, type=dtype, match="username", snippet=f"@{username}"
             )
-            if limit is not None and len(results) >= limit:
-                break
+        else:
+            continue
+        results.append(match)
+        if limit is not None and len(results) >= limit:
+            break
     return results, False
 
 
