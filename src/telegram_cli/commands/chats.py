@@ -183,8 +183,8 @@ async def fetch_dialogs_with(
     return DialogScan(rows, capped)
 
 
-async def _fetch_dialogs(limit: int | None, args: ListChatsArgs) -> DialogScan:
-    async with get_client() as client:
+async def _fetch_dialogs(ctx: Ctx, limit: int | None, args: ListChatsArgs) -> DialogScan:
+    async with get_client(ctx) as client:
         return await fetch_dialogs_with(client, limit, args)
 
 
@@ -195,7 +195,7 @@ def list_chats(args: ListChatsArgs, ctx: Ctx) -> Page[ChatRow]:
     --scan-limit dialogs client-side.
     """
     with logging_to(ctx):
-        scan = asyncio.run(_fetch_dialogs(fetch_count(ctx.page), args))
+        scan = asyncio.run(_fetch_dialogs(ctx, fetch_count(ctx.page), args))
         if scan.capped:
             warn_scan_capped(ctx, args.scan_limit)
         return Page(items=scan.rows)
@@ -277,10 +277,17 @@ def _tty() -> Iterator[tuple[IO[str], IO[str]]]:
 
 
 async def _review_chat(
-    chat_id: ChatId, match_text: str | None, tty_in: IO[str], tty_out: IO[str]
+    ctx: Ctx,
+    chat_id: ChatId,
+    match_text: str | None,
+    tty_in: IO[str],
+    tty_out: IO[str],
+    *,
+    check_privacy: bool,
 ) -> ReviewAction:
     """Show the search match and the last 10 messages, then ask what to do."""
-    history = [msg async for msg in export_stream(chat_id, limit=10, since=None)]
+    stream = export_stream(ctx, chat_id, limit=10, since=None, check_privacy=check_privacy)
+    history = [msg async for msg in stream]
 
     rule = "=" * 60
     lines = ["", rule, f"CHAT REVIEW: {chat_id}"]
@@ -320,16 +327,21 @@ def review_chats(args: ReviewArgs, ctx: Ctx) -> ReviewResult:
         reviewed: list[ReviewedChat] = []
         with _tty() as (tty_in, tty_out):
             # Each step connects on its own, so the session lock is free while the person
-            # decides; one connection for the whole review would block every other tg run
-            for chat_id, match_text in to_review.items():
-                action = asyncio.run(_review_chat(chat_id, match_text, tty_in, tty_out))
+            # decides; one connection for the whole review would block every other tg run.
+            # Only the first one checks privacy, so each warning appears once.
+            for index, (chat_id, match_text) in enumerate(to_review.items()):
+                action = asyncio.run(
+                    _review_chat(
+                        ctx, chat_id, match_text, tty_in, tty_out, check_privacy=index == 0
+                    )
+                )
                 if action == "quit":
                     break
                 if action == "delete":
-                    count = asyncio.run(delete_chat_history(chat_id))
+                    count = asyncio.run(delete_chat_history(ctx, chat_id))
                     reviewed.append(ReviewedChat(chat_id, "deleted_history", count))
                 elif action == "remove":
-                    asyncio.run(remove_chat(chat_id))
+                    asyncio.run(remove_chat(ctx, chat_id))
                     reviewed.append(ReviewedChat(chat_id, "removed"))
                 else:
                     reviewed.append(ReviewedChat(chat_id, "skipped"))

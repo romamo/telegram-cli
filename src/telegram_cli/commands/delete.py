@@ -123,15 +123,21 @@ async def remove_with(client: TelegramClient, entity: object, chat_id: ChatId) -
         await client.delete_dialog(entity)
 
 
-async def delete_chat_history(chat_id: ChatId) -> int:
-    """Clear all messages in a dialog and return how many were deleted."""
-    async with get_client() as client:
+async def delete_chat_history(ctx: Ctx, chat_id: ChatId) -> int:
+    """Clear all messages in a dialog and return how many were deleted.
+
+    Used by `chats review` after a connection that already checked privacy.
+    """
+    async with get_client(ctx, check_privacy=False) as client:
         return await clear_history_with(client, await resolve_entity(client, chat_id), chat_id)
 
 
-async def remove_chat(chat_id: ChatId) -> None:
-    """Delete the dialog and remove it from the list (leaves a group/channel)."""
-    async with get_client() as client:
+async def remove_chat(ctx: Ctx, chat_id: ChatId) -> None:
+    """Delete the dialog and remove it from the list (leaves a group/channel).
+
+    Used by `chats review` after a connection that already checked privacy.
+    """
+    async with get_client(ctx, check_privacy=False) as client:
         await remove_with(client, await resolve_entity(client, chat_id), chat_id)
 
 
@@ -171,15 +177,15 @@ async def delete_chat_with(client: TelegramClient, args: ChatDeleteArgs) -> Chat
     )
 
 
-async def _delete_chat(args: ChatDeleteArgs) -> ChatDeleteResult:
-    async with get_client() as client:
+async def _delete_chat(ctx: Ctx, args: ChatDeleteArgs) -> ChatDeleteResult:
+    async with get_client(ctx) as client:
         return await delete_chat_with(client, args)
 
 
 def delete_chat(args: ChatDeleteArgs, ctx: Ctx) -> ChatDeleteResult:
     """Clear a chat's history, or remove the chat completely with --remove."""
     with logging_to(ctx):
-        return asyncio.run(_delete_chat(args))
+        return asyncio.run(_delete_chat(ctx, args))
 
 
 # ── messages delete ───────────────────────────────────────────────────────────
@@ -305,15 +311,15 @@ async def delete_messages_with(
     return MessagesDeleteResult(effect, tuple(found), tuple(not_found), deleted)
 
 
-async def _delete_messages(targets: Targets, dry_run: bool) -> MessagesDeleteResult:
-    async with get_client() as client:
+async def _delete_messages(ctx: Ctx, targets: Targets, dry_run: bool) -> MessagesDeleteResult:
+    async with get_client(ctx) as client:
         return await delete_messages_with(client, targets, dry_run)
 
 
 def delete_messages(args: MessagesDeleteArgs, ctx: Ctx) -> MessagesDeleteResult:
     """Delete specific messages by ID, or the messages piped in from `tg messages search`."""
     with logging_to(ctx):
-        result = asyncio.run(_delete_messages(_targets(args), args.dry_run))
+        result = asyncio.run(_delete_messages(ctx, _targets(args), args.dry_run))
         if result.not_found:
             ctx.warn(
                 "MESSAGES_NOT_FOUND",
@@ -416,15 +422,15 @@ async def cleanup_with(
     return result
 
 
-async def _cleanup(args: CleanupArgs) -> CleanupResult:
-    async with get_client() as client:
+async def _cleanup(ctx: Ctx, args: CleanupArgs) -> CleanupResult:
+    async with get_client(ctx) as client:
         return await cleanup_with(client, args.phrase, args.max_matches, args.dry_run)
 
 
 def cleanup(args: CleanupArgs, ctx: Ctx) -> CleanupResult:
     """Find messages containing a phrase across all chats and delete them."""
     with logging_to(ctx):
-        result = asyncio.run(_cleanup(args))
+        result = asyncio.run(_cleanup(ctx, args))
         if result.limit_reached:
             ctx.warn(
                 "MATCH_LIMIT_REACHED",

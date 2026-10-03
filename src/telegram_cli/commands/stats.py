@@ -26,8 +26,8 @@ class Stats:
     muted: int
 
 
-async def _fetch_stats() -> Stats:
-    async with get_client() as client:
+async def _fetch_stats(ctx: Ctx) -> Stats:
+    async with get_client(ctx) as client:
         me = await client.get_me()
         # Fetch ALL dialogs (paged automatically by Telethon)
         dialogs = await client.get_dialogs(limit=None)
@@ -65,4 +65,4 @@ def stats(args: NoArgs, ctx: Ctx) -> Stats:
     Fetches all dialogs to compute aggregates, so it may take a while with many chats.
     """
     with logging_to(ctx):
-        return asyncio.run(_fetch_stats())
+        return asyncio.run(_fetch_stats(ctx))

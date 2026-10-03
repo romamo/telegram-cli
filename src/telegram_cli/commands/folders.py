@@ -61,8 +61,8 @@ class FolderInfo:
     excluded: int
 
 
-async def _list_folders() -> list[FolderInfo]:
-    async with get_client() as client:
+async def _list_folders(ctx: Ctx) -> list[FolderInfo]:
+    async with get_client(ctx) as client:
         filters = await _get_folders(client)
     return [
         FolderInfo(
@@ -79,7 +79,7 @@ async def _list_folders() -> list[FolderInfo]:
 def list_folders(args: NoArgs, ctx: Ctx) -> list[FolderInfo]:
     """List all your Telegram folders."""
     with logging_to(ctx):
-        return asyncio.run(_list_folders())
+        return asyncio.run(_list_folders(ctx))
 
 
 # ── folders create / add / remove ─────────────────────────────────────────────
@@ -150,8 +150,8 @@ async def _create_folder_internal(
     return new_filter
 
 
-async def _create_folder(name: str) -> FolderResult:
-    async with get_client() as client:
+async def _create_folder(ctx: Ctx, name: str) -> FolderResult:
+    async with get_client(ctx) as client:
         created = await _create_folder_internal(client, name)
     return FolderResult("created", created.id, name, len(created.include_peers))
 
@@ -159,7 +159,7 @@ async def _create_folder(name: str) -> FolderResult:
 def create_folder(args: FolderNameArgs, ctx: Ctx) -> FolderResult:
     """Create a new empty folder."""
     with logging_to(ctx):
-        return asyncio.run(_create_folder(args.name))
+        return asyncio.run(_create_folder(ctx, args.name))
 
 
 def _peer_id(peer: Any) -> int:
@@ -173,7 +173,7 @@ async def _mutate_folder_peers(
     ctx: Ctx, folder: str, chat_ids: list[ChatId], action: Literal["add", "remove"]
 ) -> FolderResult:
     """Add or remove chat IDs to/from a folder; `add` creates a missing folder."""
-    async with get_client() as client:
+    async with get_client(ctx) as client:
         target = await _find_folder(client, folder)
         if target is None and action == "remove":
             raise _not_found(folder)
@@ -263,8 +263,8 @@ class FolderDeleteResult:
     would_affect: Affects | None = None
 
 
-async def _delete_folder(folder: str, dry_run: bool) -> FolderDeleteResult:
-    async with get_client() as client:
+async def _delete_folder(ctx: Ctx, folder: str, dry_run: bool) -> FolderDeleteResult:
+    async with get_client(ctx) as client:
         target = await _find_folder(client, folder)
         if target is None:
             raise _not_found(folder)
@@ -285,4 +285,4 @@ async def _delete_folder(folder: str, dry_run: bool) -> FolderDeleteResult:
 def delete_folder(args: FolderDeleteArgs, ctx: Ctx) -> FolderDeleteResult:
     """Delete a folder entirely; the chats in it are kept."""
     with logging_to(ctx):
-        return asyncio.run(_delete_folder(args.folder, args.dry_run))
+        return asyncio.run(_delete_folder(ctx, args.folder, args.dry_run))

@@ -110,8 +110,9 @@ async def _search_global(
     return results
 
 
-async def _combined_search(args: SearchArgs, limit: int | None) -> tuple[list[ChatMatch], bool]:
-    async with get_client() as client:
+async def _combined_search(
+    ctx: Ctx, args: SearchArgs, limit: int | None) -> tuple[list[ChatMatch], bool]:
+    async with get_client(ctx) as client:
         # Local and global searches run in parallel on the same client
         (local, capped), remote = await asyncio.gather(
             search_dialogs_with(client, args.phrase, limit, args.type, args.scan_limit),
@@ -127,7 +128,7 @@ async def _combined_search(args: SearchArgs, limit: int | None) -> tuple[list[Ch
 def search(args: SearchArgs, ctx: Ctx) -> Page[ChatMatch]:
     """Search chats by name: your dialogs first, then Telegram's global directory."""
     with logging_to(ctx):
-        matches, capped = asyncio.run(_combined_search(args, fetch_count(ctx.page)))
+        matches, capped = asyncio.run(_combined_search(ctx, args, fetch_count(ctx.page)))
         if capped:
             warn_scan_capped(ctx, args.scan_limit)
         return Page(items=matches)
@@ -189,12 +190,13 @@ async def search_messages_with(
     return results
 
 
-async def _search_messages(args: MessageSearchArgs, limit: int | None) -> list[MessageMatch]:
-    async with get_client() as client:
+async def _search_messages(
+    ctx: Ctx, args: MessageSearchArgs, limit: int | None) -> list[MessageMatch]:
+    async with get_client(ctx) as client:
         return await search_messages_with(client, args.phrase, limit, args.type, args.chat)
 
 
 def search_messages(args: MessageSearchArgs, ctx: Ctx) -> Page[MessageMatch]:
     """Search inside message content (server-side) across all chats or in one chat."""
     with logging_to(ctx):
-        return Page(items=asyncio.run(_search_messages(args, fetch_count(ctx.page))))
+        return Page(items=asyncio.run(_search_messages(ctx, args, fetch_count(ctx.page))))

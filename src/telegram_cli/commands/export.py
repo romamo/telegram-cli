@@ -65,14 +65,17 @@ def _sender_name(sender: Any) -> str:
 
 
 async def export_stream(
+    ctx: Ctx,
     chat_id: ChatId,
     limit: int | None,
     since: date | None,
     ids: list[MessageId] | None = None,
+    *,
+    check_privacy: bool = True,
 ) -> AsyncGenerator[ExportedMessage]:
     """Messages of a chat, newest first; only ``ids`` when given"""
     since_dt = datetime(since.year, since.month, since.day, tzinfo=UTC) if since else None
-    async with get_client() as client:
+    async with get_client(ctx, check_privacy=check_privacy) as client:
         entity = await resolve_entity(client, chat_id)
 
         async def iterate_messages() -> AsyncGenerator[Any]:
@@ -153,7 +156,7 @@ def export_messages(args: ExportArgs, ctx: Ctx) -> Iterator[ExportedMessage]:
                     "--input-file or a pipe.",
                 )
             chat_id, ids = selection
-        yield from _blocking(export_stream(chat_id, args.limit, args.since, ids=ids or None))
+        yield from _blocking(export_stream(ctx, chat_id, args.limit, args.since, ids=ids or None))
 
 
 def render_message(data: Any) -> str:
