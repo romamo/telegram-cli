@@ -1,11 +1,16 @@
 [build-system]
-requires = ["hatchling"]
+# 1.27 is the first hatchling with PEP 639 license expressions and license-files
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "telegram-cli"
 version = "0.1.0"
 description = "A Telegram CLI tool for power users and agents"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Romamo" }]
 requires-python = ">=3.14"
 dependencies = [
     "treaty>=0.1.0",
@@ -13,6 +18,11 @@ dependencies = [
     "pydantic-settings>=2.7",
     "cryptg>=0.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/romamo/telegram-cli"
+Repository = "https://github.com/romamo/telegram-cli"
+Issues = "https://github.com/romamo/telegram-cli/issues"
 
 [project.scripts]
 tg = "telegram_cli.cli:main"
