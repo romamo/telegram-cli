@@ -167,3 +167,22 @@ def test_telegram_permission_errors_become_permission_denied(
     error: Exception, expected: str
 ) -> None:
     assert exit_name(rpc_failure(error)) == expected
+
+
+def test_counts_never_exceed_the_messages_asked_for() -> None:
+    from telethon.tl.types.messages import AffectedMessages
+
+    from telegram_cli.commands.delete import _affected
+
+    # Emptying Saved Messages reports one more event than messages deleted
+    assert _affected([AffectedMessages(pts=1, pts_count=7)], requested=6) == 6
+    assert _affected([AffectedMessages(pts=1, pts_count=2)], requested=6) == 2
+
+
+def test_other_telegram_errors_name_their_cause() -> None:
+    from telethon.errors import PeerIdInvalidError
+
+    exc = rpc_failure(PeerIdInvalidError(request=None))
+    assert exit_name(exc) == "GENERAL_ERROR"
+    assert "PeerIdInvalidError" in exc.message
+    assert "invalid Peer" in exc.message

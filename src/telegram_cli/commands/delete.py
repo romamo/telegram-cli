@@ -37,9 +37,15 @@ _ALL_MESSAGES = 0x7FFFFFFF
 _DRY_RUN = "Preview what would be deleted; change nothing"
 
 
-def _affected(results: Any) -> int:
-    """Messages Telegram actually deleted, from delete_messages' AffectedMessages list"""
-    return sum(r.pts_count for r in (results if isinstance(results, list) else [results]))
+def _affected(results: Any, requested: int) -> int:
+    """Messages Telegram deleted, from delete_messages' AffectedMessages list
+
+    ``pts_count`` counts update events, not messages: emptying Saved Messages, for one,
+    adds a "history cleared" event. No call deletes more messages than it names, so the
+    count is capped at ``requested``.
+    """
+    events: int = sum(r.pts_count for r in (results if isinstance(results, list) else [results]))
+    return min(events, requested)
 
 
 def _deletes_others(entity: object) -> bool:
@@ -99,10 +105,10 @@ async def clear_history_with(client: TelegramClient, entity: object, chat_id: Ch
     async for msg in client.iter_messages(entity, from_user=from_user):
         ids.append(msg.id)
         if len(ids) >= _BATCH:
-            total += _affected(await client.delete_messages(entity, ids))
+            total += _affected(await client.delete_messages(entity, ids), len(ids))
             ids = []
     if ids:
-        total += _affected(await client.delete_messages(entity, ids))
+        total += _affected(await client.delete_messages(entity, ids), len(ids))
     return total
 
 
@@ -292,7 +298,9 @@ async def delete_messages_with(
     for chat_id in chats:
         raw_ids = [m.msg_id.value for m in found if m.chat_id == chat_id]
         logger.info(f"Deleting {len(raw_ids)} messages from {chat_id}...")
-        deleted += _affected(await client.delete_messages(entities[chat_id], raw_ids))
+        deleted += _affected(
+            await client.delete_messages(entities[chat_id], raw_ids), len(raw_ids)
+        )
     effect: Literal["deleted", "noop"] = "deleted" if deleted else "noop"
     return MessagesDeleteResult(effect, tuple(found), tuple(not_found), deleted)
 
@@ -382,7 +390,9 @@ async def cleanup_with(
     for chat_id, msg_ids in by_chat.items():
         logger.info(f"Deleting {len(msg_ids)} messages from {chat_id}...")
         try:
-            deleted = _affected(await client.delete_messages(peers[chat_id], msg_ids))
+            deleted = _affected(
+                await client.delete_messages(peers[chat_id], msg_ids), len(msg_ids)
+            )
         except FloodWaitError:
             raise  # stop everything; get_client turns it into RATE_LIMITED
         except RPCError as exc:

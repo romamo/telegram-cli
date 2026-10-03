@@ -32,17 +32,20 @@ def rate_limited(exc: FloodWaitError) -> Exception:
 
 def rpc_failure(exc: RPCError) -> Exception:
     """The typed exit for a Telegram error a command did not handle itself"""
-    context = {"telegram_error": type(exc).__name__}
     if isinstance(exc, FloodWaitError):
         return rate_limited(exc)
+    # exc.message is only the error class (BAD_REQUEST); the class name and the text name it
+    name = type(exc).__name__
+    reason = str(exc).split(" (caused by ")[0].rstrip(".")
+    context = {"telegram_error": name, "http_code": exc.code}
     if isinstance(exc, (ForbiddenError, ChatAdminRequiredError)):
         return Exit.PERMISSION_DENIED(
-            f"Telegram refused the request: {exc.message}.",
+            f"Telegram refused the request ({name}): {reason}.",
             context=context,
             suggestion="Only admins can do this in that chat; act on your own messages instead.",
         )
     return Exit.GENERAL_ERROR(
-        f"Telegram returned an error: {exc.message}.", code="TELEGRAM_ERROR", context=context
+        f"Telegram returned {name}: {reason}.", code="TELEGRAM_ERROR", context=context
     )
 
 
