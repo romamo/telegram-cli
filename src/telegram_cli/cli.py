@@ -85,6 +85,10 @@ chats_group.command(
     examples=[
         ("Preview clearing a chat", "tg chats delete --chat 12345 --dry-run"),
         ("Leave a group", "tg chats delete --chat -100123 --remove --confirm-destructive"),
+        (
+            "Clear a private chat on your side only",
+            "tg chats delete --chat 12345 --just-me --confirm-destructive",
+        ),
     ],
 )(delete.delete_chat)
 
@@ -150,6 +154,10 @@ messages_group.command(
         (
             "Delete search hits",
             'tg messages search "oops" | tg messages delete --confirm-destructive',
+        ),
+        (
+            "Delete a message on your side only",
+            "tg messages delete --chat 12345 --message 111 --just-me --confirm-destructive",
         ),
     ],
 )(delete.delete_messages)

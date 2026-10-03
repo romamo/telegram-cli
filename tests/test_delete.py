@@ -5,8 +5,9 @@ import asyncio
 from typing import Any
 
 import pytest
-from fakes import FakeClient, group, user
+from fakes import FakeClient, basic_group, group, user
 from telethon.errors import ChatAdminRequiredError, MessageDeleteForbiddenError
+from telethon.tl.types import User
 from treaty import CliExit
 
 from telegram_cli.client import resolve_entity, rpc_failure
@@ -186,3 +187,89 @@ def test_other_telegram_errors_name_their_cause() -> None:
     assert exit_name(exc) == "GENERAL_ERROR"
     assert "PeerIdInvalidError" in exc.message
     assert "invalid Peer" in exc.message
+
+
+class TestRevoke:
+    def test_private_chat_preview_says_both_sides_and_clears_with_revoke(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(user(5), "a")
+        preview = run(delete_chat_with(client, ChatDeleteArgs(ChatId(chat), dry_run=True)))
+        assert preview.would_affect is not None
+        assert preview.would_affect.summary.endswith("(Ann) for both sides")
+        assert preview.revoked
+        result = run(delete_chat_with(client, ChatDeleteArgs(ChatId(chat))))
+        assert result.revoked
+        assert client.revokes == [True]
+
+    def test_just_me_clears_a_private_chat_without_revoking(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(user(5), "a")
+        args = ChatDeleteArgs(ChatId(chat), just_me=True)
+        preview_args = ChatDeleteArgs(ChatId(chat), just_me=True, dry_run=True)
+        preview = run(delete_chat_with(client, preview_args))
+        assert preview.would_affect is not None and "for you only" in preview.would_affect.summary
+        result = run(delete_chat_with(client, args))
+        assert (result.deleted_count, result.revoked) == (1, False)
+        assert client.revokes == [False]
+
+    def test_removing_a_private_chat_says_both_sides(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(user(5), "a")
+        args = ChatDeleteArgs(ChatId(chat), remove=True, dry_run=True)
+        preview = run(delete_chat_with(client, args))
+        assert preview.would_affect is not None
+        assert "deleting its history for both sides" in preview.would_affect.summary
+        assert preview.revoked
+
+    def test_just_me_in_a_basic_group_deletes_without_revoking(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(basic_group(9), "theirs", "mine")
+        result = run(delete_chat_with(client, ChatDeleteArgs(ChatId(chat), just_me=True)))
+        assert (result.deleted_count, result.revoked) == (2, False)
+        assert client.revokes == [False]
+
+    def test_just_me_is_refused_in_a_supergroup_before_anything_is_deleted(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(group(7, admin=True), "a")
+        with pytest.raises(CliExit) as caught:
+            run(delete_chat_with(client, ChatDeleteArgs(ChatId(chat), just_me=True)))
+        assert exit_name(caught.value) == "ARG_ERROR"
+        assert caught.value.context["chat_ids"] == [chat]
+        assert len(client.messages[chat]) == 1
+
+    def test_messages_delete_revokes_by_default_and_says_so(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(user(5), "a")
+        targets = {ChatId(chat): [MessageId(1)]}
+        preview = run(delete_messages_with(client, targets, dry_run=True))
+        assert preview.would_affect is not None
+        assert "for both sides in private chats" in preview.would_affect.summary
+        result = run(delete_messages_with(client, targets, dry_run=False))
+        assert result.revoked
+        assert client.revokes == [True]
+
+    def test_messages_delete_just_me_sends_revoke_false(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(user(5), "a")
+        targets = {ChatId(chat): [MessageId(1)]}
+        result = run(delete_messages_with(client, targets, dry_run=False, just_me=True))
+        assert (result.deleted_count, result.revoked) == (1, False)
+        assert client.revokes == [False]
+
+    def test_messages_delete_just_me_refuses_the_whole_run_if_any_chat_is_a_channel(self) -> None:
+        client = FakeClient()
+        private = client.add_chat(user(5), "a")
+        channel = client.add_chat(group(7), "b")
+        targets = {ChatId(private): [MessageId(1)], ChatId(channel): [MessageId(1)]}
+        with pytest.raises(CliExit) as caught:
+            run(delete_messages_with(client, targets, dry_run=False, just_me=True))
+        assert exit_name(caught.value) == "ARG_ERROR"
+        assert client.revokes == []
+        assert len(client.messages[private]) == 1
+
+    def test_saved_messages_preview_names_no_other_side(self) -> None:
+        client = FakeClient()
+        chat = client.add_chat(User(id=1, first_name="Me", is_self=True), "note")
+        preview = run(delete_chat_with(client, ChatDeleteArgs(ChatId(chat), dry_run=True)))
+        assert preview.would_affect is not None
+        assert "both sides" not in preview.would_affect.summary

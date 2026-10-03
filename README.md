@@ -100,6 +100,7 @@ uv run tg chats review --input-file <(uv run tg chats list --query "Publa" --for
 - Agents and `tg exec`/MCP callers pass JSON with `--input-file`: they get an empty stdin, so piping does not reach them
 - `chats review` is the only interactive command; with no terminal (or `--non-interactive`, `tg exec`, MCP) it exits `4` with `INPUT_REQUIRED` before doing anything
 - Destructive commands (`chats delete`, `messages delete`, `messages cleanup`, `folders delete`) only preview unless given `--confirm-destructive`
+- In private chats `chats delete` and `messages delete` delete for both sides, and the preview says so; `--just-me` deletes only your copy (`revoked: false` in the result). Channels and supergroups always delete for everyone, so `--just-me` exits `2` there before deleting anything
 - `--chat` always takes a chat ID and `--message` a message ID; repeat a flag to pass several: `--chat 111 --chat 222`
 - Exit codes are typed: `2` bad arguments, `3` partial failure, `5` not found, `7` permission denied, `8` not authenticated (run `tg auth`), `11` rate limited
 - Repeating a delete is safe: once nothing is left it reports `effect: "noop"` instead of failing

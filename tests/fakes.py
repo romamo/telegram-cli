@@ -9,7 +9,14 @@ from typing import Any
 from telethon import utils
 from telethon.errors import MessageDeleteForbiddenError
 from telethon.tl.functions.messages import DeleteHistoryRequest
-from telethon.tl.types import Channel, ChatAdminRights, ChatPhotoEmpty, PeerUser, User
+from telethon.tl.types import (
+    Channel,
+    Chat,
+    ChatAdminRights,
+    ChatPhotoEmpty,
+    PeerUser,
+    User,
+)
 from telethon.tl.types.messages import AffectedHistory, AffectedMessages
 
 
@@ -26,6 +33,19 @@ def group(channel_id: int, *, admin: bool = False) -> Channel:
         date=datetime(2024, 1, 1, tzinfo=UTC),
         megagroup=True,
         admin_rights=rights,
+    )
+
+
+def basic_group(chat_id: int) -> Chat:
+    """A legacy (non-super) group, where revoke still decides who loses the messages"""
+    return Chat(
+        id=chat_id,
+        title=f"basic group {chat_id}",
+        photo=ChatPhotoEmpty(),
+        participants_count=3,
+        date=datetime(2024, 1, 1, tzinfo=UTC),
+        version=1,
+        creator=True,
     )
 
 
@@ -62,6 +82,8 @@ class FakeClient:
     dialogs: list[Dialog] = field(default_factory=list)
     forbidden: set[int] = field(default_factory=set)
     """Chats where deleting raises MESSAGE_DELETE_FORBIDDEN"""
+    revokes: list[bool] = field(default_factory=list)
+    """The revoke flag of every delete call, in order"""
     history_batch: int = 2
     """Messages one DeleteHistoryRequest removes before asking to be called again"""
     calls: list[str] = field(default_factory=list)
@@ -98,9 +120,12 @@ class FakeClient:
             if from_user is None or (from_user == "me" and m.out):
                 yield m
 
-    async def delete_messages(self, entity: Any, ids: Iterable[int]) -> list[AffectedMessages]:
+    async def delete_messages(
+        self, entity: Any, ids: Iterable[int], *, revoke: bool = True
+    ) -> list[AffectedMessages]:
         chat_id = utils.get_peer_id(entity)
         self.calls.append(f"delete_messages:{chat_id}")
+        self.revokes.append(revoke)
         if chat_id in self.forbidden:
             raise MessageDeleteForbiddenError(request=None)
         wanted = set(ids)
@@ -127,6 +152,7 @@ class FakeClient:
         assert isinstance(request, DeleteHistoryRequest)
         chat_id = utils.get_peer_id(request.peer)
         self.calls.append(f"delete_history:{chat_id}")
+        self.revokes.append(bool(request.revoke))
         msgs = self.messages[chat_id]
         removed, self.messages[chat_id] = msgs[: self.history_batch], msgs[self.history_batch :]
         return AffectedHistory(pts=1, pts_count=len(removed), offset=len(self.messages[chat_id]))

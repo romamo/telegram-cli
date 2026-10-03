@@ -44,6 +44,14 @@ def test_manifest_lists_every_command() -> None:
     }
 
 
+@pytest.mark.parametrize("command", [("chats", "delete"), ("messages", "delete")])
+def test_deletes_offer_just_me_and_report_revoked(command: tuple[str, str]) -> None:
+    code, envelope = tg(*command, "--schema")
+    assert code == 0
+    assert envelope["data"]["flags"]["just-me"]["default"] is False
+    assert "revoked" in json.dumps(envelope["data"])
+
+
 @pytest.mark.parametrize(
     ("argv", "field"),
     [
