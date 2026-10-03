@@ -226,6 +226,8 @@ type ReviewAction = Literal["delete", "remove", "skip", "quit"]
 class ReviewedChat:
     chat_id: ChatId
     action: Literal["deleted_history", "removed", "skipped"]
+    deleted_count: int | None = None
+    """Messages deleted with the history; None for removed or skipped chats"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -324,8 +326,8 @@ def review_chats(args: ReviewArgs, ctx: Ctx) -> ReviewResult:
                 if action == "quit":
                     break
                 if action == "delete":
-                    asyncio.run(delete_chat_history(chat_id))
-                    reviewed.append(ReviewedChat(chat_id, "deleted_history"))
+                    count = asyncio.run(delete_chat_history(chat_id))
+                    reviewed.append(ReviewedChat(chat_id, "deleted_history", count))
                 elif action == "remove":
                     asyncio.run(remove_chat(chat_id))
                     reviewed.append(ReviewedChat(chat_id, "removed"))

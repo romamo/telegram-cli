@@ -70,6 +70,7 @@ def _logging_app() -> App:
         with logging_to(ctx):
             logging.getLogger("telegram_cli.helper").info("Deleting %d messages", 3)
             logging.getLogger("telegram_cli.helper").debug("hidden detail")
+            logging.getLogger("telegram_cli.helper").warning("Chat 5 skipped")
         return _Done(True)
 
     return app
@@ -81,8 +82,9 @@ class TestLogging:
         code = _logging_app().run(["work", "--format", "json"], stdout=out, stderr=err)
         assert code == 0
         records = [json.loads(line) for line in err.getvalue().splitlines()]
-        assert [r["message"] for r in records] == ["Deleting 3 messages"]
-        assert records[0]["fields"]["logger"] == "telegram_cli.helper"
+        assert [r["message"] for r in records] == ["Deleting 3 messages", "Chat 5 skipped"]
+        assert records[0]["fields"] == {}  # progress lines carry no level or module
+        assert records[1]["fields"] == {"severity": "warning"}
         # stdout still carries only the envelope
         assert json.loads(out.getvalue())["data"] == {"done": True}
 

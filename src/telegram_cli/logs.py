@@ -21,7 +21,11 @@ class _CtxHandler(logging.Handler):
         self._ctx = ctx
 
     def emit(self, record: logging.LogRecord) -> None:
-        self._ctx.log(record.getMessage(), logger=record.name, severity=record.levelname.lower())
+        # Progress lines read plainly; only a warning or worse says so
+        if record.levelno >= logging.WARNING:
+            self._ctx.log(record.getMessage(), severity=record.levelname.lower())
+        else:
+            self._ctx.log(record.getMessage())
 
 
 @contextmanager
