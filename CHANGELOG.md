@@ -12,7 +12,7 @@ may break the command line.
 The CLI moved from agentyper to [treaty](https://pypi.org/project/treaty/). Commands now
 return JSON envelopes (`ok`, `data`, `error`, `meta`) when piped, exit with typed codes,
 preview every destructive command with `--dry-run`, and refuse destructive work without
-`--confirm-destructive`.
+`--confirm-destructive`. The release is not additive: see Breaking and the migration notes below.
 
 ### Migrating from 0.1.0
 
