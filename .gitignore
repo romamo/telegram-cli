@@ -1,0 +1,18 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.mypy_cache/
+.ruff_cache/
+*.session
+*.session-journal
+tmp/
+.DS_Store
+.pytest_cache/
+
+# Personal Telegram exports and scratch output; never commit
+/chat.json
+/dialogs_*.json
+/tmp_*.json

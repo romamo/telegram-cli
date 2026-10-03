@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "telegram-cli"
+version = "0.1.0"
+description = "A Telegram CLI tool for power users and agents"
+requires-python = ">=3.14"
+dependencies = [
+    "treaty>=0.1.0",
+    "telethon>=1.38",
+    "pydantic-settings>=2.7",
+    "cryptg>=0.4",
+]
+
+[project.scripts]
+tg = "telegram_cli.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/telegram_cli"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9",
+    "mypy>=1.15",
+    "pytest>=9.1.1",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["telethon", "telethon.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
