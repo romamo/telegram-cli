@@ -7,19 +7,21 @@ from typing import Any
 
 from telethon import TelegramClient
 from telethon.errors import ChatAdminRequiredError, FloodWaitError, ForbiddenError, RPCError
-from treaty import Exit
+from treaty import Ctx, Exit
 
-from telegram_cli.config import get_settings
+from telegram_cli.config import Settings, env_files, get_settings
 from telegram_cli.ids import ChatId
+from telegram_cli.privacy import Exposure, exposures, make_private_session, warn_exposed
 from telegram_cli.session_lock import session_lock
 
 # Exit codes every command talking to Telegram through get_client() may raise
 CLIENT_EXIT_CODES = ("AUTH_REQUIRED", "PERMISSION_DENIED", "RATE_LIMITED", "UNAVAILABLE")
 
 
-def new_client() -> TelegramClient:
-    cfg = get_settings()
-    return TelegramClient(cfg.session_path, cfg.api_id, cfg.api_hash)
+def new_client(cfg: Settings) -> tuple[TelegramClient, list[Exposure]]:
+    """A client on a session file only the user can read, and any one found wider"""
+    tightened = make_private_session(cfg.session_file)
+    return TelegramClient(cfg.session_path, cfg.api_id, cfg.api_hash), tightened
 
 
 def rate_limited(exc: FloodWaitError) -> Exception:
@@ -50,10 +52,15 @@ def rpc_failure(exc: RPCError) -> Exception:
 
 
 @asynccontextmanager
-async def connected() -> AsyncIterator[TelegramClient]:
-    """A connected client holding the session lock, logged in or not; disconnects after"""
-    async with session_lock(get_settings().lock_path):
-        client = new_client()
+async def connected(ctx: Ctx) -> AsyncIterator[TelegramClient]:
+    """A connected client holding the session lock, logged in or not; disconnects after
+
+    Warns the run when the session or the credentials are open to other users.
+    """
+    cfg = get_settings()
+    async with session_lock(cfg.lock_path):
+        client, tightened = new_client(cfg)
+        warn_exposed(ctx, [*tightened, *exposures(cfg.session_dir, env_files())])
         await client.connect()
         try:
             yield client
@@ -62,14 +69,14 @@ async def connected() -> AsyncIterator[TelegramClient]:
 
 
 @asynccontextmanager
-async def get_client() -> AsyncIterator[TelegramClient]:
+async def get_client(ctx: Ctx) -> AsyncIterator[TelegramClient]:
     """Yield an authorized Telethon client, then cleanly disconnect.
 
     Raises AUTH_REQUIRED when no user is logged in, UNAVAILABLE (SESSION_BUSY) when another
     run holds the session, and turns Telegram errors raised in the body into typed exits:
     RATE_LIMITED, PERMISSION_DENIED, or GENERAL_ERROR.
     """
-    async with connected() as client:
+    async with connected(ctx) as client:
         if not await client.is_user_authorized():
             raise Exit.AUTH_REQUIRED(
                 "Not authenticated with Telegram.",

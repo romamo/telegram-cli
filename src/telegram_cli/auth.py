@@ -29,6 +29,7 @@ from treaty import Ctx, Exit, Flag, ParseError
 from telegram_cli.client import connected, rate_limited
 from telegram_cli.config import get_settings
 from telegram_cli.logs import logging_to
+from telegram_cli.privacy import make_private_dir
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +79,7 @@ class PendingLogin:
 
     def save(self) -> None:
         path = self.path()
-        path.parent.mkdir(parents=True, exist_ok=True)
+        make_private_dir(path.parent)
         # The code hash lets anyone holding the code log in: keep it private to the user
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -102,7 +103,7 @@ class PendingLogin:
 
 
 def _session_file() -> str:
-    return f"{get_settings().session_path}.session"
+    return str(get_settings().session_file)
 
 
 def _logged_in(me: Any, effect: Literal["created", "noop"]) -> AuthResult:
@@ -158,7 +159,7 @@ async def _sign_in(client: TelegramClient, pending: PendingLogin, code: str, arg
 
 async def _do_auth(args: AuthArgs, ctx: Ctx) -> AuthResult:
     try:
-        async with connected() as client:
+        async with connected(ctx) as client:
             return await _auth_with(client, args, ctx)
     except FloodWaitError as exc:
         raise rate_limited(exc) from exc
