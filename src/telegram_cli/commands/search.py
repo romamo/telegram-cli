@@ -156,32 +156,39 @@ def _match(chat_id: ChatId, msg: Any) -> MessageMatch:
     )
 
 
-async def _search_messages(
-    phrase: str, limit: int | None, chat_type: ChatType | None, chat: ChatId | None
+async def search_messages_with(
+    client: TelegramClient,
+    phrase: str,
+    limit: int | None,
+    chat_type: ChatType | None,
+    chat: ChatId | None,
 ) -> list[MessageMatch]:
     """Server-side message search, in one chat or across all of them."""
-    async with get_client() as client:
-        if chat is not None:
-            entity = await resolve_entity(client, chat)
-            messages = await client.get_messages(entity, search=phrase, limit=limit)
-            return [_match(chat, msg) for msg in messages]
+    if chat is not None:
+        entity = await resolve_entity(client, chat)
+        messages = await client.get_messages(entity, search=phrase, limit=limit)
+        return [_match(chat, msg) for msg in messages]
 
-        # A type filter drops hits, so ask for more
-        asked = limit * 3 if (chat_type and limit is not None) else limit
-        results: list[MessageMatch] = []
-        for msg in await client.get_messages(None, search=phrase, limit=asked):
-            if chat_type and dialog_type(await client.get_entity(msg.peer_id)) != chat_type:
-                continue
-            results.append(_match(ChatId(utils.get_peer_id(msg.peer_id)), msg))
-            if limit is not None and len(results) >= limit:
-                break
-        return results
+    # A type filter drops hits, so ask for more
+    asked = limit * 3 if (chat_type and limit is not None) else limit
+    results: list[MessageMatch] = []
+    for msg in await client.get_messages(None, search=phrase, limit=asked):
+        # get_chat() reuses the chats Telegram returned with the search; it only
+        # fetches when one is missing
+        if chat_type and dialog_type(await msg.get_chat()) != chat_type:
+            continue
+        results.append(_match(ChatId(utils.get_peer_id(msg.peer_id)), msg))
+        if limit is not None and len(results) >= limit:
+            break
+    return results
+
+
+async def _search_messages(args: MessageSearchArgs, limit: int | None) -> list[MessageMatch]:
+    async with get_client() as client:
+        return await search_messages_with(client, args.phrase, limit, args.type, args.chat)
 
 
 def search_messages(args: MessageSearchArgs, ctx: Ctx) -> Page[MessageMatch]:
     """Search inside message content (server-side) across all chats or in one chat."""
     with logging_to(ctx):
-        rows = asyncio.run(
-            _search_messages(args.phrase, fetch_count(ctx.page), args.type, args.chat)
-        )
-        return Page(items=rows)
+        return Page(items=asyncio.run(_search_messages(args, fetch_count(ctx.page))))

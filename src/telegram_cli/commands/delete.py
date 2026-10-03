@@ -8,6 +8,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from telethon import TelegramClient, utils
@@ -19,7 +20,12 @@ from treaty import Affects, Arg, Ctx, Exit, Flag, ParseError
 from telegram_cli.client import get_client, resolve_entity
 from telegram_cli.ids import ChatId, MessageId
 from telegram_cli.logs import logging_to
-from telegram_cli.utils import chat_id_field, message_id_field, read_piped_items
+from telegram_cli.utils import (
+    INPUT_FILE_DESCRIPTION,
+    chat_id_field,
+    load_items,
+    message_id_field,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -179,15 +185,22 @@ class MessagesDeleteArgs:
     message: tuple[MessageId, ...] = Flag(
         default=(), description="Message ID to delete, repeatable"
     )
+    input_file: Path | None = Flag(default=None, description=INPUT_FILE_DESCRIPTION)
     dry_run: bool = Flag(default=False, description=_DRY_RUN)
 
     def __post_init__(self) -> None:
+        if self.input_file is not None and self.chat is not None:
+            raise ParseError(
+                "--input-file replaces --chat and --message",
+                context={"field": "input-file"},
+                suggestion="Pass either --chat with --message, or --input-file.",
+            )
         if (self.chat is None) != (not self.message):
             raise ParseError(
                 "--chat and --message go together",
                 context={"field": "message" if self.chat is not None else "chat"},
-                suggestion="Pass both --chat and --message, or neither and pipe JSON from "
-                "`tg messages search`.",
+                suggestion="Pass both --chat and --message, or neither and give JSON from "
+                "`tg messages search` with --input-file or a pipe.",
             )
 
 
@@ -224,7 +237,7 @@ def _targets(args: MessagesDeleteArgs) -> Targets:
     if args.chat is not None:
         return {args.chat: list(args.message)}
     by_chat: defaultdict[ChatId, list[MessageId]] = defaultdict(list)
-    for item in read_piped_items():
+    for item in load_items(args.input_file):
         chat_id = chat_id_field(item, "chat_id")
         msg_id = message_id_field(item, "msg_id", "id")
         if chat_id is not None and msg_id is not None:
@@ -232,7 +245,8 @@ def _targets(args: MessagesDeleteArgs) -> Targets:
     if not by_chat:
         raise Exit.ARG_ERROR(
             "No messages to delete.",
-            suggestion="Pass --chat ID --message MSG_ID, or pipe JSON from `tg messages search`.",
+            suggestion="Pass --chat ID --message MSG_ID, or JSON from `tg messages search` with "
+            "--input-file or a pipe.",
         )
     return dict(by_chat)
 

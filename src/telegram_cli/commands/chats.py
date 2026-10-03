@@ -18,7 +18,7 @@ from treaty import Ctx, Exit, Flag, Page, ParseError
 from telegram_cli.client import get_client
 from telegram_cli.ids import ChatId
 from telegram_cli.logs import logging_to
-from telegram_cli.utils import chat_id_field, fetch_count, parse_piped_items
+from telegram_cli.utils import INPUT_FILE_DESCRIPTION, chat_id_field, fetch_count, load_items
 
 logger = logging.getLogger(__name__)
 
@@ -223,11 +223,7 @@ def list_chats(args: ListChatsArgs, ctx: Ctx) -> Page[ChatRow]:
 @dataclass(frozen=True, slots=True)
 class ReviewArgs:
     chat: tuple[ChatId, ...] = Flag(default=(), description="Chat ID to review, repeatable")
-    input_file: Path | None = Flag(
-        default=None,
-        description="JSON from another tg command listing the chats, e.g. "
-        "--input-file <(tg chats list -q Work --format json)",
-    )
+    input_file: Path | None = Flag(default=None, description=INPUT_FILE_DESCRIPTION)
 
     def __post_init__(self) -> None:
         if not self.chat and self.input_file is None:
@@ -271,15 +267,7 @@ def review_targets(args: ReviewArgs) -> dict[ChatId, str | None]:
     """Chats to review, each with the text of the message search hit that found it, if any"""
     targets: dict[ChatId, str | None] = dict.fromkeys(args.chat)
     if args.input_file is not None:
-        try:
-            raw = args.input_file.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            raise Exit.ARG_ERROR(
-                f"Cannot read --input-file: {exc}.",
-                context={"input_file": str(args.input_file)},
-                suggestion="Pass a readable UTF-8 file of JSON from another tg command.",
-            ) from exc
-        for item in parse_piped_items(raw):
+        for item in load_items(args.input_file):
             chat_id = chat_id_field(item, "chat_id", "id")
             if chat_id is None:
                 continue
@@ -349,6 +337,8 @@ def review_chats(args: ReviewArgs, ctx: Ctx) -> ReviewResult:
         ctx.log("Starting interactive review", chats=len(to_review))
         reviewed: list[ReviewedChat] = []
         with _tty() as (tty_in, tty_out):
+            # Each step connects on its own, so the session lock is free while the person
+            # decides; one connection for the whole review would block every other tg run
             for chat_id, match_text in to_review.items():
                 action = asyncio.run(_review_chat(chat_id, match_text, tty_in, tty_out))
                 if action == "quit":

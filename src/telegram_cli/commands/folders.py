@@ -4,17 +4,18 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from telethon import TelegramClient
 from telethon.tl.functions.messages import GetDialogFiltersRequest, UpdateDialogFilterRequest
 from telethon.tl.types import DialogFilter, TextWithEntities
-from treaty import Affects, Arg, Ctx, Exit, Flag, NoArgs
+from treaty import Affects, Arg, Ctx, Exit, Flag, NoArgs, ParseError
 
 from telegram_cli.client import get_client
 from telegram_cli.ids import ChatId
 from telegram_cli.logs import logging_to
-from telegram_cli.utils import chat_id_field, read_piped_items
+from telegram_cli.utils import INPUT_FILE_DESCRIPTION, chat_id_field, load_items
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,15 @@ class FolderPeersArgs:
     chat: tuple[ChatId, ...] = Flag(
         default=(), description="Chat ID, repeatable; read from piped JSON when omitted"
     )
+    input_file: Path | None = Flag(default=None, description=INPUT_FILE_DESCRIPTION)
+
+    def __post_init__(self) -> None:
+        if self.chat and self.input_file is not None:
+            raise ParseError(
+                "--input-file replaces --chat",
+                context={"field": "input-file"},
+                suggestion="Pass either --chat or --input-file.",
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,12 +221,15 @@ def _chat_ids(args: FolderPeersArgs) -> list[ChatId]:
     if args.chat:
         return list(dict.fromkeys(args.chat))
     ids = [
-        c for item in read_piped_items() if (c := chat_id_field(item, "id", "chat_id")) is not None
+        c
+        for item in load_items(args.input_file)
+        if (c := chat_id_field(item, "id", "chat_id")) is not None
     ]
     if not ids:
         raise Exit.ARG_ERROR(
             "No chat IDs given.",
-            suggestion="Pass --chat, or pipe JSON from `tg search` or `tg chats list`.",
+            suggestion="Pass --chat, or JSON from `tg search` or `tg chats list` with "
+            "--input-file or a pipe.",
         )
     return list(dict.fromkeys(ids))
 

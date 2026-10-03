@@ -37,6 +37,11 @@ class Message:
     out: bool = False
     date: datetime = datetime(2024, 1, 1, tzinfo=UTC)
     sender_id: int | None = None
+    chat: Any = None
+    """The chat Telegram sent along with the message, as Telethon caches it"""
+
+    async def get_chat(self) -> Any:
+        return self.chat
 
 
 @dataclass
@@ -67,10 +72,11 @@ class FakeClient:
         peer = utils.get_peer(entity)
         msgs = self.messages.setdefault(chat_id, [])
         for text in texts:
-            msgs.append(Message(len(msgs) + 1, text, peer, out=out))
+            msgs.append(Message(len(msgs) + 1, text, peer, out=out, chat=entity))
         return chat_id
 
     async def get_entity(self, chat_id: int) -> Any:
+        self.calls.append(f"get_entity:{chat_id}")
         if chat_id not in self.entities:
             raise ValueError(f"Could not find the input entity for {chat_id}")
         return self.entities[chat_id]

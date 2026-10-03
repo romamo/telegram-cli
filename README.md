@@ -79,9 +79,11 @@ uv run tg messages delete --chat 12345 --message 111 --message 222 --confirm-des
 uv run tg chats delete --chat 12345 --dry-run
 uv run tg chats delete --chat 12345 --confirm-destructive
 
-# Commands that take IDs also read piped JSON from other tg commands
+# Commands that take IDs also read JSON from other tg commands, piped or with --input-file
 uv run tg messages search "old number" | uv run tg messages delete --confirm-destructive
 uv run tg search "flutter" | uv run tg folders add "Work"
+uv run tg messages search "old number" > hits.json
+uv run tg messages delete --input-file hits.json --dry-run
 
 # Review chats one by one at a terminal (agents use `chats delete`)
 uv run tg chats review --chat 12345 --chat 67890
@@ -93,6 +95,7 @@ uv run tg chats review --input-file <(uv run tg chats list --query "Publa" --for
 - Output is `plain` text in a terminal and a JSON envelope (`ok`, `data`, `error`, `meta`) when piped; force one with `--format plain|json|jsonl|tsv`
 - `uv run tg manifest` prints every command, flag, and exit code; `uv run tg <command> --schema` prints one command's parameters and output schema
 - Progress logs go to stderr: JSON lines when stdout is piped, `message key=value` in a terminal
+- Agents and `tg exec`/MCP callers pass JSON with `--input-file`: they get an empty stdin, so piping does not reach them
 - `chats review` is the only interactive command; with no terminal (or `--non-interactive`, `tg exec`, MCP) it exits `4` with `INPUT_REQUIRED` before doing anything
 - Destructive commands (`chats delete`, `messages delete`, `messages cleanup`, `folders delete`) only preview unless given `--confirm-destructive`
 - `--chat` always takes a chat ID and `--message` a message ID; repeat a flag to pass several: `--chat 111 --chat 222`

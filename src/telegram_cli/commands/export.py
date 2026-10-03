@@ -5,6 +5,7 @@ import asyncio
 from collections.abc import AsyncGenerator, Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Any
 
 from treaty import Ctx, Exit, Flag, ParseError
@@ -12,7 +13,12 @@ from treaty import Ctx, Exit, Flag, ParseError
 from telegram_cli.client import get_client, resolve_entity
 from telegram_cli.ids import ChatId, MessageId
 from telegram_cli.logs import logging_to
-from telegram_cli.utils import chat_id_field, message_id_field, read_piped_items
+from telegram_cli.utils import (
+    INPUT_FILE_DESCRIPTION,
+    chat_id_field,
+    load_items,
+    message_id_field,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +32,15 @@ class ExportArgs:
         default=None, description="Only messages on or after this ISO date, e.g. 2025-01-01"
     )
 
+    input_file: Path | None = Flag(default=None, description=INPUT_FILE_DESCRIPTION)
+
     def __post_init__(self) -> None:
+        if self.chat is not None and self.input_file is not None:
+            raise ParseError(
+                "--input-file replaces --chat",
+                context={"field": "input-file"},
+                suggestion="Pass either --chat or --input-file.",
+            )
         if self.limit is not None and self.limit < 1:
             raise ParseError("--limit must be at least 1", context={"flag": "limit"})
 
@@ -111,9 +125,9 @@ def _blocking[T](agen: AsyncGenerator[T]) -> Iterator[T]:
         loop.close()
 
 
-def _piped_selection() -> tuple[ChatId, list[MessageId]] | None:
+def _piped_selection(input_file: Path | None) -> tuple[ChatId, list[MessageId]] | None:
     """The first chat in piped JSON and the message IDs piped for it"""
-    items = read_piped_items()
+    items = load_items(input_file)
     chat_id = next((c for item in items if (c := chat_id_field(item, "chat_id")) is not None), None)
     if chat_id is None:
         return None
@@ -131,11 +145,12 @@ def export_messages(args: ExportArgs, ctx: Ctx) -> Iterator[ExportedMessage]:
     with logging_to(ctx):
         chat_id, ids = args.chat, None
         if chat_id is None:
-            selection = _piped_selection()
+            selection = _piped_selection(args.input_file)
             if selection is None:
                 raise Exit.ARG_ERROR(
                     "No chat to export.",
-                    suggestion="Pass --chat ID, or pipe JSON from `tg messages search`.",
+                    suggestion="Pass --chat ID, or JSON from `tg messages search` with "
+                    "--input-file or a pipe.",
                 )
             chat_id, ids = selection
         yield from _blocking(export_stream(chat_id, args.limit, args.since, ids=ids or None))

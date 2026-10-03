@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
 from treaty import Exit, PageRequest
 
@@ -27,6 +28,27 @@ def read_piped_items() -> list[JsonItem]:
     if sys.stdin is None or sys.stdin.isatty():
         return []
     return parse_piped_items(sys.stdin.read())
+
+
+INPUT_FILE_DESCRIPTION = (
+    "JSON from another tg command to read instead of piped stdin, e.g. a file of "
+    "`tg messages search` output"
+)
+
+
+def load_items(input_file: Path | None) -> list[JsonItem]:
+    """JSON objects from ``--input-file`` when given, else from piped stdin"""
+    if input_file is None:
+        return read_piped_items()
+    try:
+        raw = input_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Exit.ARG_ERROR(
+            f"Cannot read --input-file: {exc}.",
+            context={"input_file": str(input_file)},
+            suggestion="Pass a readable UTF-8 file of JSON from another tg command.",
+        ) from exc
+    return parse_piped_items(raw)
 
 
 def parse_piped_items(raw: str) -> list[JsonItem]:
