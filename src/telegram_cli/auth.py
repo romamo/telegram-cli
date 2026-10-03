@@ -8,7 +8,6 @@ Two ways in:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from dataclasses import dataclass
@@ -30,6 +29,7 @@ from telegram_cli.client import connected, rate_limited
 from telegram_cli.config import get_settings
 from telegram_cli.logs import logging_to
 from telegram_cli.privacy import make_private_dir
+from telegram_cli.running import run_async
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,4 +199,4 @@ async def _auth_with(client: TelegramClient, args: AuthArgs, ctx: Ctx) -> AuthRe
 def run_auth(args: AuthArgs, ctx: Ctx) -> AuthResult:
     """Authenticate as a Telegram user (phone → OTP → optional 2FA)."""
     with logging_to(ctx):
-        return asyncio.run(_do_auth(args, ctx))
+        return run_async(_do_auth(args, ctx))

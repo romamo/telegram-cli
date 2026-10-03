@@ -11,6 +11,7 @@ from telegram_cli.client import CLIENT_EXIT_CODES
 from telegram_cli.commands import chats, delete, export, folders, search, stats
 from telegram_cli.ids import ChatId, MessageId
 from telegram_cli.render import render_plain
+from telegram_cli.running import cancel_running
 
 app = App(
     "tg",
@@ -38,6 +39,7 @@ app.command(
     exit_codes=("RATE_LIMITED", "UNAVAILABLE"),
     interactive=True,
     has_network_io=True,
+    cleanup=cancel_running,
     timeout=_LONG,
     examples=[
         ("Log in from a terminal", "tg auth"),
@@ -54,6 +56,7 @@ app.command(
     danger_level="safe",
     exit_codes=CLIENT_EXIT_CODES,
     has_network_io=True,
+    cleanup=cancel_running,
     timeout=_LONG,
     examples=[("Account summary", "tg stats")],
 )(stats.stats)
@@ -68,6 +71,7 @@ chats_group.command(
     danger_level="safe",
     exit_codes=CLIENT_EXIT_CODES,
     has_network_io=True,
+    cleanup=cancel_running,
     examples=[
         ("Chats last active in 2020", "tg chats list --year 2020"),
         ("Private chats from 2019", "tg chats list --type user --year 2019"),
@@ -81,6 +85,7 @@ chats_group.command(
     danger_level="destructive",
     exit_codes=_NOT_FOUND,
     has_network_io=True,
+    cleanup=cancel_running,
     timeout=_LONG,
     examples=[
         ("Preview clearing a chat", "tg chats delete --chat 12345 --dry-run"),
@@ -100,6 +105,7 @@ chats_group.command(
     interactive=True,
     exit_codes=_NOT_FOUND,
     has_network_io=True,
+    cleanup=cancel_running,
     timeout=None,
     examples=[
         ("Review two chats", "tg chats review --chat 111 --chat 222"),
@@ -118,6 +124,7 @@ app.command(
     danger_level="safe",
     exit_codes=CLIENT_EXIT_CODES,
     has_network_io=True,
+    cleanup=cancel_running,
     examples=[
         ("Find a chat by name", 'tg search "quarterly report"'),
         ("Only groups", 'tg search "crypto" --type group'),
@@ -134,6 +141,7 @@ messages_group.command(
     danger_level="safe",
     exit_codes=_NOT_FOUND,
     has_network_io=True,
+    cleanup=cancel_running,
     examples=[
         ("Search every chat", 'tg messages search "quarterly report"'),
         ("Search one chat", 'tg messages search "invoice" --chat 12345'),
@@ -146,6 +154,7 @@ messages_group.command(
     danger_level="destructive",
     exit_codes=_NOT_FOUND,
     has_network_io=True,
+    cleanup=cancel_running,
     examples=[
         (
             "Preview deleting two messages",
@@ -169,6 +178,7 @@ messages_group.command(
     danger_level="destructive",
     exit_codes=(*CLIENT_EXIT_CODES, "PARTIAL_FAILURE"),
     has_network_io=True,
+    cleanup=cancel_running,
     timeout=_LONG,
     examples=[
         ("Preview a cleanup", 'tg messages cleanup "old phone number" --dry-run'),
@@ -185,6 +195,7 @@ messages_group.command(
     danger_level="safe",
     exit_codes=_NOT_FOUND,
     has_network_io=True,
+    cleanup=cancel_running,
     streaming=True,
     renderers={Format.PLAIN: export.render_message},
     examples=[
@@ -204,6 +215,7 @@ folders_group.command(
     danger_level="safe",
     exit_codes=CLIENT_EXIT_CODES,
     has_network_io=True,
+    cleanup=cancel_running,
     paginated=False,  # Telegram allows a handful of folders
     examples=[("All folders", "tg folders list")],
 )(folders.list_folders)
@@ -214,6 +226,7 @@ folders_group.command(
     danger_level="mutating",
     exit_codes=CLIENT_EXIT_CODES,
     has_network_io=True,
+    cleanup=cancel_running,
     examples=[("Create a folder", 'tg folders create "Work"')],
 )(folders.create_folder)
 
@@ -223,6 +236,7 @@ folders_group.command(
     danger_level="mutating",
     exit_codes=_NOT_FOUND,
     has_network_io=True,
+    cleanup=cancel_running,
     examples=[
         ("Add two chats", 'tg folders add "Work" --chat 111 --chat 222'),
         ("Add search hits", 'tg search "flutter" | tg folders add "Work"'),
@@ -235,6 +249,7 @@ folders_group.command(
     danger_level="mutating",
     exit_codes=_NOT_FOUND,
     has_network_io=True,
+    cleanup=cancel_running,
     examples=[("Remove a chat", 'tg folders remove "Work" --chat 111')],
 )(folders.remove_from_folder)
 
@@ -244,6 +259,7 @@ folders_group.command(
     danger_level="destructive",
     exit_codes=_NOT_FOUND,
     has_network_io=True,
+    cleanup=cancel_running,
     examples=[("Delete a folder", 'tg folders delete "Work" --confirm-destructive')],
 )(folders.delete_folder)
 

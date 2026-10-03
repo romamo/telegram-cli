@@ -1,7 +1,6 @@
 """stats — account summary and dialog aggregates."""
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 
 from treaty import Ctx, NoArgs
@@ -9,6 +8,7 @@ from treaty import Ctx, NoArgs
 from telegram_cli.chat_type import ChatType, dialog_type
 from telegram_cli.client import get_client
 from telegram_cli.logs import logging_to
+from telegram_cli.running import run_async
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,4 +65,4 @@ def stats(args: NoArgs, ctx: Ctx) -> Stats:
     Fetches all dialogs to compute aggregates, so it may take a while with many chats.
     """
     with logging_to(ctx):
-        return asyncio.run(_fetch_stats(ctx))
+        return run_async(_fetch_stats(ctx))

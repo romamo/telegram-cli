@@ -65,6 +65,18 @@ def rpc_failure(exc: RPCError) -> Exception:
     )
 
 
+async def connect(client: TelegramClient) -> None:
+    """Connect ``client``; UNAVAILABLE when Telegram cannot be reached"""
+    try:
+        await client.connect()
+    except ConnectionError as exc:
+        raise Exit.UNAVAILABLE(
+            f"Telegram is unreachable: {exc}.",
+            code="TELEGRAM_UNREACHABLE",
+            suggestion="Check the network connection, then retry.",
+        ) from exc
+
+
 @asynccontextmanager
 async def connected(ctx: Ctx, *, check_privacy: bool = True) -> AsyncIterator[TelegramClient]:
     """A connected client holding the session lock, logged in or not; disconnects after
@@ -75,7 +87,7 @@ async def connected(ctx: Ctx, *, check_privacy: bool = True) -> AsyncIterator[Te
     cfg = get_settings()
     async with session_lock(cfg.lock_path):
         client = checked_client(ctx, cfg, env_files(), check_privacy=check_privacy)
-        await client.connect()
+        await connect(client)
         try:
             yield client
         finally:
@@ -86,9 +98,10 @@ async def connected(ctx: Ctx, *, check_privacy: bool = True) -> AsyncIterator[Te
 async def get_client(ctx: Ctx, *, check_privacy: bool = True) -> AsyncIterator[TelegramClient]:
     """Yield an authorized Telethon client, then cleanly disconnect.
 
-    Raises AUTH_REQUIRED when no user is logged in, UNAVAILABLE (SESSION_BUSY) when another
-    run holds the session, and turns Telegram errors raised in the body into typed exits:
-    RATE_LIMITED, PERMISSION_DENIED, or GENERAL_ERROR.
+    Raises AUTH_REQUIRED when no user is logged in, UNAVAILABLE when another run holds the
+    session (SESSION_BUSY) or Telegram cannot be reached (TELEGRAM_UNREACHABLE), and turns
+    Telegram errors raised in the body into typed exits: RATE_LIMITED, PERMISSION_DENIED,
+    or GENERAL_ERROR.
     """
     async with connected(ctx, check_privacy=check_privacy) as client:
         if not await client.is_user_authorized():
