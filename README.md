@@ -111,6 +111,36 @@ uv run tg chats review --input-file <(uv run tg chats list --query "Publa" --for
 - Repeating a delete is safe: once nothing is left it reports `effect: "noop"` instead of failing
 - Filters on `chats list` and `search` scan up to `--scan-limit` dialogs (default 3000, `0` for all) and warn with `SCAN_LIMIT_REACHED` when they stop early; `messages cleanup` does the same with `--max-matches` and `MATCH_LIMIT_REACHED`
 
+### MCP server
+
+[treaty](https://github.com/romamo/treaty) serves every command as an MCP tool over stdio, in-process. Log in with `tg auth` first; the server uses the same session.
+
+```bash
+uv sync --extra mcp
+uv run treaty-mcp telegram_cli.cli:app
+```
+
+Register it with an MCP client (Claude Code `.mcp.json`, Claude Desktop `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "telegram": {
+      "command": "uv",
+      "args": [
+        "--directory", "/path/to/telegram-cli",
+        "run", "--extra", "mcp", "treaty-mcp", "telegram_cli.cli:app"
+      ]
+    }
+  }
+}
+```
+
+- Tools are named after commands with `_` for spaces (`chats_list`, `messages_delete`); arguments use the flag names with underscores, and every result is the same JSON envelope the CLI prints
+- Destructive tools (`chats_delete`, `messages_delete`, `messages_cleanup`, `folders_delete`) only preview: without `confirm_destructive: true` they return `CONFIRMATION_REQUIRED` with what would change
+- There is no stdin to pipe into: pass JSON from another command as a file with `input_file`
+- `chats_review` needs a person at a terminal and refuses with `INPUT_REQUIRED`; use `chats_delete`
+
 ## Environment Variables
 
 | Variable | Required | Description |
