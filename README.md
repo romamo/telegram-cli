@@ -1,5 +1,7 @@
 # telegram-cli
 
+[![CI](https://github.com/romamo/telegram-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/romamo/telegram-cli/actions/workflows/ci.yml)
+
 A command-line Telegram client for power users and agents, inspired by [vysheng/tg](https://github.com/vysheng/tg).
 
 Built with **[Telethon](https://telethon.dev)** (user-mode MTProto client) and **[treaty](https://pypi.org/project/treaty/)** (CLI framework implementing the [CLI Agent Spec](https://github.com/cli-agent-spec/cli-agent-spec)).
