@@ -105,6 +105,36 @@ class TestRenderPlain:
     def test_missing_values_leave_no_trailing_space(self) -> None:
         assert render_plain({"next_step": None}) == "next_step:\n"
 
+    def test_nested_objects_flatten_to_dotted_keys(self) -> None:
+        summary = "Deletes 0 message(s) matching 'spam' across 3 chat(s); nothing else changes"
+        data = {"effect": "noop", "would_affect": {"summary": summary, "count": 0}}
+        assert render_plain(data) == (
+            f"effect: noop\nwould_affect.summary: {summary}\nwould_affect.count: 0\n"
+        )
+
+    def test_lists_of_objects_flatten_to_indexed_keys(self) -> None:
+        data = {"chats": [{"chat_id": 1, "deleted": 2}, {"chat_id": 3, "deleted": 0}]}
+        assert render_plain(data) == (
+            "chats.0.chat_id: 1\nchats.0.deleted: 2\nchats.1.chat_id: 3\nchats.1.deleted: 0\n"
+        )
+
+    def test_empty_containers_keep_their_key(self) -> None:
+        data = {"targets": [], "errors": {}, "next": {"cursor": None}}
+        assert render_plain(data) == "targets: []\nerrors: {}\nnext.cursor:\n"
+
+    def test_key_value_lines_are_never_truncated(self) -> None:
+        long = "x" * 200
+        assert render_plain({"text": long, "deep": {"text": long}}) == (
+            f"text: {long}\ndeep.text: {long}\n"
+        )
+
+    def test_multiline_values_stay_on_one_line(self) -> None:
+        assert render_plain({"a": {"b": "one\ntwo"}}) == "a.b: one two\n"
+
+    def test_table_cells_are_still_truncated(self) -> None:
+        text = render_plain([{"text": "x" * 200, "meta": {"k": 1}}])
+        assert text.splitlines()[2] == "x" * 59 + "…" + '  {"k":1}'
+
     def test_streamed_messages_render_one_line_each(self) -> None:
         from telegram_cli.commands.export import render_message
 
