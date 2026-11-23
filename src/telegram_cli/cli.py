@@ -111,7 +111,7 @@ chats_group.command(
         ("Review two chats", "tg chats review --chat 111 --chat 222"),
         (
             "Review chats matching a name",
-            'tg chats review --input-file <(tg chats list --query "Publa" --format json)',
+            'tg chats review --input-file <(tg chats list --query "Example" --format json)',
         ),
     ],
 )(chats.review_chats)
