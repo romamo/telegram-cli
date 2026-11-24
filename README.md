@@ -93,7 +93,7 @@ uv run tg messages delete --input-file hits.json --dry-run
 
 # Review chats one by one at a terminal (agents use `chats delete`)
 uv run tg chats review --chat 12345 --chat 67890
-uv run tg chats review --input-file <(uv run tg chats list --query "Publa" --format json)
+uv run tg chats review --input-file <(uv run tg chats list --query "Example" --format json)
 ```
 
 ### Output and agents
